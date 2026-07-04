@@ -1,0 +1,496 @@
+// C6 Corvette Tracker database schema
+// Format: DBML (https://dbml.dbdiagram.io/home)
+// Purpose: Store crawled C6 Corvette listings, snapshots, dedupe clusters,
+// price history, risk signals, feed runs, and exports.
+
+Project corvette_tracker {
+  database_type: "SQLite"
+  Note: '''
+    Weekly C6 Corvette listing tracker.
+
+    Design principles:
+    - Keep raw source payloads for re-parsing/debugging.
+    - Store normalized listings separately from snapshots.
+    - Preserve price/status changes over time.
+    - Cluster likely duplicate listings across sources.
+    - Model uncertain extracted facts with confidence/evidence fields.
+  '''
+}
+
+Enum source_kind {
+  marketplace
+  dealer_site
+  manual
+  other
+}
+
+Enum seller_type {
+  dealer
+  private
+  auction
+  unknown
+}
+
+Enum listing_status {
+  active
+  reserved
+  sold
+  removed
+  unknown
+}
+
+Enum availability_change_type {
+  new
+  changed
+  unchanged
+  removed
+  reappeared
+}
+
+Enum accident_status {
+  accident_free
+  accident_reported
+  repaired_accident
+  unknown
+}
+
+Enum transmission_type {
+  manual
+  automatic
+  unknown
+}
+
+Enum body_style {
+  coupe_targa
+  convertible
+  unknown
+}
+
+Enum c6_trim {
+  base
+  grand_sport
+  z06
+  zr1
+  special_edition
+  unknown
+}
+
+Enum c6_engine_code {
+  ls2
+  ls3
+  ls7
+  ls9
+  unknown
+}
+
+Enum country_confidence_source {
+  description_text
+  vin
+  license_plate
+  seller_location
+  gauge_cluster
+  carfax
+  inferred
+  unknown
+}
+
+Enum feed_item_type {
+  new_listing
+  price_change
+  metadata_change
+  removed_listing
+  reappeared_listing
+  duplicate_candidate
+  risk_warning
+  interesting_listing
+}
+
+Table sources {
+  id integer [pk, increment]
+  name varchar [not null, unique, note: "Human readable source name, e.g. mobile.de"]
+  slug varchar [not null, unique, note: "Stable machine identifier, e.g. mobile_de"]
+  kind source_kind [not null, default: 'marketplace']
+  base_url varchar
+  search_url varchar
+  enabled boolean [not null, default: true]
+  rate_limit_per_minute integer
+  notes text
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table crawl_runs {
+  id integer [pk, increment]
+  started_at datetime [not null]
+  finished_at datetime
+  status varchar [not null, note: "running, success, partial_failure, failed"]
+  trigger varchar [not null, note: "manual, weekly_schedule, retry"]
+  config_hash varchar
+  total_sources integer [not null, default: 0]
+  total_raw_listings integer [not null, default: 0]
+  total_normalized_listings integer [not null, default: 0]
+  error_count integer [not null, default: 0]
+  notes text
+}
+
+Table raw_listings {
+  id integer [pk, increment]
+  crawl_run_id integer [not null]
+  source_id integer [not null]
+  source_listing_id varchar
+  url varchar [not null]
+  url_hash varchar [not null, note: "Stable hash of canonical URL"]
+  fetched_at datetime [not null]
+  http_status integer
+  content_type varchar
+  payload_format varchar [not null, note: "html, json, text"]
+  payload_path varchar [note: "Local path for large raw payloads"]
+  payload_text text [note: "Inline payload for small pages/results"]
+  payload_hash varchar [not null]
+  parse_status varchar [not null, default: 'pending', note: "pending, parsed, parse_failed, ignored"]
+  parse_error text
+
+  indexes {
+    (source_id, source_listing_id) [name: "idx_raw_source_listing"]
+    (source_id, url_hash) [name: "idx_raw_source_url"]
+    payload_hash [name: "idx_raw_payload_hash"]
+    fetched_at [name: "idx_raw_fetched_at"]
+  }
+}
+
+Table vehicle_clusters {
+  id integer [pk, increment]
+  cluster_key varchar [not null, unique, note: "Stable generated key for likely same physical vehicle"]
+  canonical_listing_id integer
+  vin varchar
+  title varchar
+  c6_trim c6_trim [not null, default: 'unknown']
+  engine_code c6_engine_code [not null, default: 'unknown']
+  body_style body_style [not null, default: 'unknown']
+  model_year integer
+  first_seen_at datetime [not null]
+  last_seen_at datetime [not null]
+  active_listing_count integer [not null, default: 0]
+  confidence decimal [not null, default: 0, note: "0.0-1.0 cluster confidence"]
+  evidence_json text [note: "JSON array/object with dedupe evidence"]
+
+  indexes {
+    vin [name: "idx_cluster_vin"]
+    (c6_trim, engine_code, model_year) [name: "idx_cluster_c6_identity"]
+  }
+}
+
+Table listings {
+  id integer [pk, increment]
+  source_id integer [not null]
+  vehicle_cluster_id integer
+  current_raw_listing_id integer
+  source_listing_id varchar
+  canonical_url varchar [not null]
+  canonical_url_hash varchar [not null]
+  title varchar [not null]
+  description_text text
+
+  // C6 identity
+  generation varchar [not null, default: 'C6']
+  model varchar [note: "e.g. Corvette C6 Grand Sport"]
+  model_year integer
+  first_registration varchar [note: "YYYY-MM if known"]
+  c6_trim c6_trim [not null, default: 'unknown']
+  body_style body_style [not null, default: 'unknown']
+  engine_code c6_engine_code [not null, default: 'unknown']
+  engine_text varchar
+  power_hp integer
+  transmission transmission_type [not null, default: 'unknown']
+  transmission_detail varchar [note: "e.g. A6 automatic, 6-speed manual"]
+
+  // Price and mileage
+  price_eur integer
+  mileage_km integer
+
+  // Appearance
+  exterior_color varchar
+  interior_color varchar
+
+  // Legal / inspection / history
+  tuv_until varchar [note: "YYYY-MM if known"]
+  hu_until varchar [note: "YYYY-MM if known; usually same semantic as TÜV/HU"]
+  accident_status accident_status [not null, default: 'unknown']
+  damage_text text
+  has_damage boolean
+  service_history text
+  owners_count integer
+  vin varchar
+
+  // Location / origin
+  location_raw varchar
+  location_city varchar
+  location_region varchar
+  location_country varchar [note: "Current seller/listing country, ISO-3166 alpha-2 if possible"]
+  origin_country varchar [note: "Inferred origin/import history country, ISO-3166 alpha-2 if possible"]
+  origin_confidence decimal [note: "0.0-1.0"]
+  origin_confidence_source country_confidence_source [not null, default: 'unknown']
+  origin_evidence_json text
+  import_status varchar [note: "EU vehicle, US import, Japan import, unknown, etc."]
+  eu_spec boolean
+  mph_or_kmh_cluster varchar [note: "mph, kmh, unknown"]
+  title_status_hint varchar [note: "clean, salvage, rebuilt, unknown"]
+
+  // Seller / availability
+  seller_name varchar
+  seller_type seller_type [not null, default: 'unknown']
+  seller_contact_hash varchar [note: "Optional hash only; avoid storing raw private contact data"]
+  availability_status listing_status [not null, default: 'unknown']
+  first_seen_at datetime [not null]
+  last_seen_at datetime [not null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+
+  // Extraction quality
+  is_c6_candidate boolean [not null, default: true]
+  c6_match_confidence decimal [not null, default: 0]
+  c6_match_evidence_json text
+  crawl_confidence decimal [not null, default: 0]
+  extraction_evidence_json text
+
+  indexes {
+    (source_id, source_listing_id) [unique, name: "ux_listing_source_listing"]
+    canonical_url_hash [unique, name: "ux_listing_canonical_url"]
+    vehicle_cluster_id [name: "idx_listing_cluster"]
+    vin [name: "idx_listing_vin"]
+    (c6_trim, engine_code, model_year) [name: "idx_listing_c6_identity"]
+    price_eur [name: "idx_listing_price"]
+    mileage_km [name: "idx_listing_mileage"]
+    availability_status [name: "idx_listing_status"]
+    last_seen_at [name: "idx_listing_last_seen"]
+    location_country [name: "idx_listing_location_country"]
+  }
+}
+
+Table listing_snapshots {
+  id integer [pk, increment]
+  listing_id integer [not null]
+  raw_listing_id integer
+  crawl_run_id integer [not null]
+  captured_at datetime [not null]
+  change_type availability_change_type [not null, default: 'unchanged']
+
+  // Snapshot values most likely to change
+  title varchar [not null]
+  description_hash varchar
+  price_eur integer
+  mileage_km integer
+  availability_status listing_status [not null, default: 'unknown']
+  location_raw varchar
+  seller_name varchar
+  damage_text text
+  accident_status accident_status [not null, default: 'unknown']
+  tuv_until varchar
+  hu_until varchar
+  image_count integer [not null, default: 0]
+  snapshot_hash varchar [not null, note: "Hash of normalized tracked fields"]
+
+  indexes {
+    (listing_id, captured_at) [name: "idx_snapshot_listing_time"]
+    (crawl_run_id, change_type) [name: "idx_snapshot_run_change"]
+    snapshot_hash [name: "idx_snapshot_hash"]
+  }
+}
+
+Table price_history {
+  id integer [pk, increment]
+  listing_id integer [not null]
+  old_price_eur integer
+  new_price_eur integer [not null]
+  delta_eur integer
+  delta_percent decimal
+  detected_at datetime [not null]
+  snapshot_id integer
+
+  indexes {
+    listing_id [name: "idx_price_listing"]
+    detected_at [name: "idx_price_detected_at"]
+  }
+}
+
+Table listing_images {
+  id integer [pk, increment]
+  listing_id integer [not null]
+  raw_listing_id integer
+  url varchar [not null]
+  url_hash varchar [not null]
+  image_hash varchar [note: "Perceptual hash when implemented"]
+  position integer
+  is_main boolean [not null, default: false]
+  width integer
+  height integer
+  first_seen_at datetime [not null]
+  last_seen_at datetime [not null]
+
+  indexes {
+    (listing_id, url_hash) [unique, name: "ux_image_listing_url"]
+    image_hash [name: "idx_image_hash"]
+    is_main [name: "idx_image_main"]
+  }
+}
+
+Table listing_equipment {
+  id integer [pk, increment]
+  listing_id integer [not null]
+  equipment_key varchar [not null, note: "e.g. z51_package, npp_exhaust, magnetic_ride"]
+  equipment_label varchar [not null]
+  detected_value varchar [note: "yes, no, unknown, or extracted detail"]
+  confidence decimal [not null, default: 0]
+  evidence_text text
+  detected_at datetime [not null]
+
+  indexes {
+    (listing_id, equipment_key) [unique, name: "ux_equipment_listing_key"]
+    equipment_key [name: "idx_equipment_key"]
+  }
+}
+
+Table risk_flags {
+  id integer [pk, increment]
+  code varchar [not null, unique, note: "e.g. salvage_import_possible, ls7_head_risk"]
+  label varchar [not null]
+  description text
+  severity integer [not null, default: 1, note: "1=info, 2=low, 3=medium, 4=high, 5=critical"]
+  created_at datetime [not null]
+}
+
+Table listing_risk_flags {
+  id integer [pk, increment]
+  listing_id integer [not null]
+  risk_flag_id integer [not null]
+  snapshot_id integer
+  confidence decimal [not null, default: 0]
+  evidence_text text
+  detected_at datetime [not null]
+  resolved_at datetime
+
+  indexes {
+    (listing_id, risk_flag_id, snapshot_id) [unique, name: "ux_listing_risk_snapshot"]
+    risk_flag_id [name: "idx_listing_risk_flag"]
+    detected_at [name: "idx_listing_risk_detected_at"]
+  }
+}
+
+Table cluster_members {
+  id integer [pk, increment]
+  vehicle_cluster_id integer [not null]
+  listing_id integer [not null]
+  confidence decimal [not null, default: 0]
+  evidence_json text
+  created_at datetime [not null]
+
+  indexes {
+    (vehicle_cluster_id, listing_id) [unique, name: "ux_cluster_member"]
+    listing_id [name: "idx_cluster_member_listing"]
+  }
+}
+
+Table feed_runs {
+  id integer [pk, increment]
+  crawl_run_id integer
+  generated_at datetime [not null]
+  period_start datetime
+  period_end datetime
+  markdown_path varchar
+  json_path varchar
+  csv_path varchar
+  total_active integer [not null, default: 0]
+  new_count integer [not null, default: 0]
+  changed_count integer [not null, default: 0]
+  removed_count integer [not null, default: 0]
+  risk_warning_count integer [not null, default: 0]
+  notes text
+}
+
+Table feed_items {
+  id integer [pk, increment]
+  feed_run_id integer [not null]
+  listing_id integer [not null]
+  vehicle_cluster_id integer
+  item_type feed_item_type [not null]
+  rank integer
+  score integer
+  title varchar [not null]
+  summary text
+  price_eur integer
+  previous_price_eur integer
+  price_delta_eur integer
+  risk_summary text
+  created_at datetime [not null]
+
+  indexes {
+    (feed_run_id, rank) [name: "idx_feed_item_rank"]
+    (feed_run_id, item_type) [name: "idx_feed_item_type"]
+    listing_id [name: "idx_feed_item_listing"]
+  }
+}
+
+Table scoring_runs {
+  id integer [pk, increment]
+  crawl_run_id integer
+  scoring_version varchar [not null]
+  config_hash varchar
+  scored_at datetime [not null]
+  notes text
+}
+
+Table listing_scores {
+  id integer [pk, increment]
+  scoring_run_id integer [not null]
+  listing_id integer [not null]
+  score integer [not null]
+  price_score integer [not null, default: 0]
+  mileage_score integer [not null, default: 0]
+  trim_score integer [not null, default: 0]
+  history_score integer [not null, default: 0]
+  risk_penalty integer [not null, default: 0]
+  explanation_json text
+
+  indexes {
+    (scoring_run_id, listing_id) [unique, name: "ux_score_run_listing"]
+    score [name: "idx_listing_score"]
+  }
+}
+
+// Relationships
+Ref: raw_listings.crawl_run_id > crawl_runs.id [delete: cascade]
+Ref: raw_listings.source_id > sources.id [delete: restrict]
+
+Ref: listings.source_id > sources.id [delete: restrict]
+Ref: listings.vehicle_cluster_id > vehicle_clusters.id [delete: set null]
+Ref: listings.current_raw_listing_id > raw_listings.id [delete: set null]
+
+Ref: vehicle_clusters.canonical_listing_id > listings.id [delete: set null]
+
+Ref: listing_snapshots.listing_id > listings.id [delete: cascade]
+Ref: listing_snapshots.raw_listing_id > raw_listings.id [delete: set null]
+Ref: listing_snapshots.crawl_run_id > crawl_runs.id [delete: cascade]
+
+Ref: price_history.listing_id > listings.id [delete: cascade]
+Ref: price_history.snapshot_id > listing_snapshots.id [delete: set null]
+
+Ref: listing_images.listing_id > listings.id [delete: cascade]
+Ref: listing_images.raw_listing_id > raw_listings.id [delete: set null]
+
+Ref: listing_equipment.listing_id > listings.id [delete: cascade]
+
+Ref: listing_risk_flags.listing_id > listings.id [delete: cascade]
+Ref: listing_risk_flags.risk_flag_id > risk_flags.id [delete: restrict]
+Ref: listing_risk_flags.snapshot_id > listing_snapshots.id [delete: set null]
+
+Ref: cluster_members.vehicle_cluster_id > vehicle_clusters.id [delete: cascade]
+Ref: cluster_members.listing_id > listings.id [delete: cascade]
+
+Ref: feed_runs.crawl_run_id > crawl_runs.id [delete: set null]
+Ref: feed_items.feed_run_id > feed_runs.id [delete: cascade]
+Ref: feed_items.listing_id > listings.id [delete: cascade]
+Ref: feed_items.vehicle_cluster_id > vehicle_clusters.id [delete: set null]
+
+Ref: scoring_runs.crawl_run_id > crawl_runs.id [delete: set null]
+Ref: listing_scores.scoring_run_id > scoring_runs.id [delete: cascade]
+Ref: listing_scores.listing_id > listings.id [delete: cascade]

@@ -514,6 +514,8 @@ corvetteTracker/
   README.md
   pyproject.toml
   config.example.yaml
+  database/
+    schema.dbml
   src/
     corvette_tracker/
       __init__.py
