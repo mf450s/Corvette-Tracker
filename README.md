@@ -1,12 +1,12 @@
-# Corvette Tracker
+# C6 Corvette Tracker
 
-Ein wöchentlicher Angebots-Tracker für Chevrolet Corvettes. Ziel ist ein aggregierter Feed aus mehreren Fahrzeugbörsen/Quellen, der neue und geänderte Angebote erkennt, relevante Metadaten extrahiert, Dubletten zusammenführt und die Fahrzeuge vergleichbar macht.
+Ein wöchentlicher Angebots-Tracker für Chevrolet Corvette C6-Angebote. Ziel ist ein aggregierter Feed aus mehreren Fahrzeugbörsen/Quellen, der neue und geänderte Angebote erkennt, relevante Metadaten extrahiert, Dubletten zusammenführt und die Fahrzeuge vergleichbar macht.
 
 ## Ziel
 
-Der Tracker soll einmal pro Woche nach neuen Corvette-Angeboten suchen und pro Fahrzeug strukturierte Daten sammeln:
+Der Tracker soll einmal pro Woche nach neuen Corvette-C6-Angeboten suchen und pro Fahrzeug strukturierte Daten sammeln:
 
-- Modell / Generation
+- Modell / C6-Variante
 - Preis
 - Motor
 - Kilometerstand
@@ -47,7 +47,7 @@ Der Tracker soll nicht nur Links sammeln, sondern die Angebote kaufentscheidungs
 
 1. Wöchentlich laufen
 2. Angebote aus definierten Quellen abrufen
-3. Corvette-Angebote erkennen
+3. Corvette-C6-Angebote erkennen und andere Generationen herausfiltern
 4. Metadaten extrahieren
 5. Rohdaten speichern
 6. Strukturierte Angebotsdaten speichern
@@ -76,12 +76,12 @@ Start pragmatisch mit öffentlich zugänglichen Quellen.
 - AutoScout24
 - Kleinanzeigen
 - AutoUncle
-- Classic Trader, falls ältere Corvettes relevant sind
-- Händler-Websites mit Corvette-Bestand
+- Classic Trader, falls frühe/seltene C6-Angebote dort auftauchen
+- Händler-Websites mit C6-Bestand
 
 ### Ergänzende Quellen
 
-- Hersteller-/Modell-Datenbanken für Generation, Motoren und Leistungsdaten
+- C6-spezifische Modell-/Motor-Datenbanken für Baujahre, Motoren und Leistungsdaten
 - TÜV-/HU-Angaben aus Inseratstexten
 - VIN-Decoder, falls VIN im Inserat steht
 - Google Maps / Geocoding für Standortnormalisierung, optional
@@ -109,10 +109,10 @@ Jede Quelle darf anders sein. Das gemeinsame Datenmodell sitzt erst nach dem Par
 | `source_listing_id` | string/null | ID der Anzeige auf der Plattform, falls verfügbar |
 | `url` | string | Link zum Angebot |
 | `title` | string | Originaltitel der Anzeige |
-| `model` | string/null | Modellbezeichnung, z. B. `Corvette C6` |
-| `generation` | string/null | C1, C2, C3, C4, C5, C6, C7, C8 |
+| `model` | string/null | Modellbezeichnung, z. B. `Corvette C6 Grand Sport` |
+| `generation` | string | Immer `C6`; Listings ohne C6-Bezug werden verworfen |
 | `price_eur` | number/null | Preis in EUR |
-| `engine` | string/null | Motor, z. B. `LS3`, `LT1`, `6.2 V8` |
+| `engine` | string/null | Motor, z. B. `LS2`, `LS3`, `LS7`, `LS9`, `6.0 V8`, `6.2 V8`, `7.0 V8` |
 | `mileage_km` | number/null | Kilometerstand |
 | `exterior_color` | string/null | Außenfarbe |
 | `interior_color` | string/null | Innenfarbe |
@@ -138,8 +138,8 @@ Diese Felder würde ich direkt mitplanen, auch wenn nicht alle Quellen sie saube
 |---|---|
 | `vin` | Ermöglicht Dubletten-Erkennung, Ausstattung und Historienchecks |
 | `transmission` | Schalter/Automatik ist bei Corvettes preisrelevant |
-| `body_style` | Coupe, Cabrio, Targa, Z06, Grand Sport etc. |
-| `trim` | Stingray, Z06, ZR1, Grand Sport, Collector Edition etc. |
+| `body_style` | Coupe/Targa oder Cabrio |
+| `trim` | Base, Grand Sport, Z06, ZR1, Sondermodell etc. |
 | `fuel_type` | Meist Benzin, aber für Vollständigkeit |
 | `emission_class` | Relevant für Zulassung/Umweltzonen |
 | `owners_count` | Anzahl Vorbesitzer ist kaufrelevant |
@@ -153,7 +153,7 @@ Diese Felder würde ich direkt mitplanen, auch wenn nicht alle Quellen sie saube
 | `image_urls` | Bilder für Wiedererkennung und spätere manuelle Prüfung |
 | `main_image_hash` | Hilft bei Dubletten über mehrere Plattformen |
 | `description_text` | Originalbeschreibung für spätere Extraktion/Debugging |
-| `equipment` | Ausstattung: Magnetic Ride, HUD, Keramikbremsen, Competition Seats etc. |
+| `equipment` | Ausstattung: Magnetic Ride, HUD, Z51, NPP/Klappenauspuff, Competition Seats, Keramikbremsen etc. |
 | `modifications` | Tuning, Auspuff, Felgen, Software, Umbauten |
 | `known_issues` | Erkannte Problemsignale aus Freitext |
 | `warranty` | Händlergarantie/Gewährleistung |
@@ -163,47 +163,38 @@ Diese Felder würde ich direkt mitplanen, auch wenn nicht alle Quellen sie saube
 
 ---
 
-## Corvette-spezifische Felder
+## C6-spezifische Felder
 
-Corvettes haben ein paar Dinge, die bei normalen Auto-Trackern oft fehlen.
+Der Tracker fokussiert ausschließlich auf die Chevrolet Corvette C6. Andere Generationen werden höchstens als Fehlertreffer geloggt, aber nicht im Feed geführt.
 
-### Generation
+### Baujahre
 
-- C1: 1953–1962
-- C2: 1963–1967
-- C3: 1968–1982
-- C4: 1984–1996
-- C5: 1997–2004
 - C6: 2005–2013
-- C7: 2014–2019
-- C8: ab 2020
+- Base LS2: grob 2005–2007
+- Base LS3: grob 2008–2013
+- Z06 LS7: 2006–2013
+- ZR1 LS9: 2009–2013
+- Grand Sport: 2010–2013
 
 ### Varianten / Trims
 
-- Base / Stingray
-- Grand Sport
+- Base Coupe / Targa
+- Base Convertible
+- Grand Sport Coupe / Convertible
 - Z06
 - ZR1
-- Convertible
-- Coupe / Targa
-- Collector Edition / Sondermodelle
+- Sondermodelle wie 427 Convertible, Centennial Edition, Competition Sport, Carbon Edition
 
 ### Motoren / Codes
 
-Beispiele:
+C6-relevant:
 
-- LS1
-- LS2
-- LS3
-- LS6
-- LS7
-- LS9
-- LT1
-- LT2
-- LT4
-- LT5
+- LS2 — 6.0 V8, ca. 404 PS EU / 400 hp US
+- LS3 — 6.2 V8, ca. 437 PS EU / 430–436 hp US
+- LS7 — 7.0 V8, Z06, ca. 512 PS EU / 505 hp US
+- LS9 — 6.2 V8 Kompressor, ZR1, ca. 647 PS EU / 638 hp US
 
-Der Tracker sollte sowohl Freitext wie `6.2 V8` als auch Motorcodes erkennen.
+Der Tracker sollte sowohl Freitext wie `6.2 V8`, `7.0`, `Kompressor` als auch Motorcodes erkennen. LT-Motoren sind für C6 normalerweise Fehlertreffer und sollten als `not_c6_or_suspicious` markiert werden.
 
 ---
 
@@ -229,6 +220,40 @@ Der Tracker sollte sowohl Freitext wie `6.2 V8` als auch Motorcodes erkennen.
 | `registration_problem` | `keine deutschen Papiere`, `Zulassung schwierig` |
 | `modified_heavily` | Kompressorumbau, Software, Rennstrecke, Tracktool |
 | `sold_or_reserved` | `verkauft`, `reserviert` |
+
+---
+
+## C6-spezifische Kauf- und Risiko-Felder
+
+Diese Punkte sind für eine C6 wichtiger als generische Auto-Metadaten:
+
+| Feld | Warum relevant |
+|---|---|
+| `c6_year_bucket` | Frühe LS2, spätere LS3, Z06/ZR1/Grand Sport unterscheiden sich preislich stark |
+| `ls7_risk_notes` | Bei Z06 LS7 sind Ventilführungen/Heads ein bekanntes Prüfthema |
+| `zr1_supercharger_notes` | Bei ZR1 sind Kompressor-/Ladeluftkühlungshinweise relevant |
+| `transmission_detail` | A6-Automatik vs. Schalter ist preis- und begehrlichkeitsrelevant |
+| `z51_package` | Z51-Fahrwerk/Bremsen/Kühlung bei Base-Modellen relevant |
+| `npp_exhaust` | Klappenauspuff ist begehrte Ausstattung |
+| `magnetic_ride` | Relevante Ausstattung und potenzieller Kostenpunkt |
+| `eu_spec` | EU-Modell vs. US-Import beeinflusst Wert und Zulassung |
+| `mph_or_kmh_cluster` | Tacho-/Importhinweis |
+| `title_status_hint` | Clean/Rebuilt/Salvage Title bei US-Importen |
+| `headlight_taillight_spec` | EU/US-Umbauten können Herkunft und Zulassung anzeigen |
+
+### C6-Filterlogik
+
+Ein Angebot gilt als C6-Kandidat, wenn mindestens eines passt:
+
+- Titel/Beschreibung enthält `C6`
+- Baujahr liegt zwischen 2005 und 2013 und Titel enthält `Corvette`
+- Motor/Trim passt eindeutig zu C6, z. B. LS2, LS3, LS7, LS9, Z06 2006–2013, ZR1 2009–2013, Grand Sport 2010–2013
+
+Ein Angebot wird als Fehlertreffer markiert, wenn:
+
+- Baujahr außerhalb 2005–2013 liegt
+- C7/C8-Begriffe auftauchen, z. B. LT1, LT2, Stingray C7, Mid Engine
+- C5-Begriffe auftauchen, z. B. Baujahr 1997–2004 mit LS1/LS6
 
 ---
 
@@ -280,14 +305,14 @@ Der Feed soll nicht einfach alle Listings dumpen, sondern relevante Änderungen 
 ### Beispiel-Ausgabe Markdown
 
 ```markdown
-## Neue Corvette-Angebote — KW 12/2026
+## Neue C6 Corvette-Angebote — KW 12/2026
 
-### 1. Corvette C7 Grand Sport — 67.900 €
+### 1. Corvette C6 Grand Sport — 54.900 €
 
-- Motor: LT1 6.2 V8
-- PS: 466
-- Kilometer: 42.000 km
-- EZ: 05/2018
+- Motor: LS3 6.2 V8
+- PS: 437
+- Kilometer: 68.000 km
+- EZ: 05/2011
 - TÜV/HU: 06/2027
 - Außen: Admiral Blue
 - Innen: Schwarz
@@ -345,10 +370,10 @@ Später in `config.yaml`:
 
 ```yaml
 preferences:
-  generations: ["C6", "C7"]
+  generations: ["C6"]
   trims: ["Grand Sport", "Z06", "ZR1"]
-  max_price_eur: 90000
-  max_mileage_km: 80000
+  max_price_eur: 80000
+  max_mileage_km: 100000
   countries: ["DE", "NL", "BE"]
   require_tuv: false
   avoid_accident_cars: true
@@ -564,14 +589,14 @@ Für die Datenbank kann v1 trotzdem flache Spalten nutzen. Evidence kann als JSO
 
 ## Offene Entscheidungen
 
-1. Welche Generationen sind interessant? Alle oder Fokus auf C5–C8?
+1. Welche C6-Varianten sind interessant: Base, Grand Sport, Z06, ZR1?
 2. Preislimit?
 3. Länder: nur Deutschland oder EU-weit?
 4. Privat + Händler oder nur Händler?
 5. Sollen Unfallwagen komplett ausgeschlossen oder nur markiert werden?
 6. Soll der Feed per Datei reichen oder direkt per ntfy/Matrix/Telegram kommen?
 7. Wie wichtig sind Bilder/Bildvergleich in v1?
-8. Sollen US-Importe ausgeschlossen oder nur riskanter bewertet werden?
+8. Sollen US-Importe ausgeschlossen oder nur riskanter bewertet werden? Bei C6 ist das besonders relevant wegen Salvage/Rebuilt-Historie.
 
 ---
 
@@ -632,7 +657,7 @@ v1 ist fertig, wenn:
 - mindestens eine echte Quelle angebunden ist
 - neue Angebote erkannt werden
 - Preisänderungen erkannt werden
-- strukturierte Felder für Preis, Modell, Kilometerstand, Standort und Link zuverlässig befüllt werden
+- strukturierte Felder für Preis, C6-Variante, Motor, Kilometerstand, Standort und Link zuverlässig befüllt werden
 - Freitextfelder wie Schaden, Unfall, TÜV/HU und Herkunft als best-effort extrahiert werden
 - `feed/latest.md` erzeugt wird
 - `data/exports/latest.json` erzeugt wird
@@ -657,11 +682,11 @@ v1 ist fertig, wenn:
       "cluster_id": "vehicle_abc123",
       "source": "mobile.de",
       "url": "https://example.com/listing/123456",
-      "model": "Corvette C7 Grand Sport",
-      "generation": "C7",
-      "price_eur": 67900,
-      "engine": "LT1 6.2 V8",
-      "mileage_km": 42000,
+      "model": "Corvette C6 Grand Sport",
+      "generation": "C6",
+      "price_eur": 54900,
+      "engine": "LS3 6.2 V8",
+      "mileage_km": 68000,
       "exterior_color": "Admiral Blue",
       "interior_color": "Black",
       "damage": null,
@@ -669,7 +694,7 @@ v1 ist fertig, wenn:
       "accident_status": "unfallfrei",
       "first_registration": "2018-05",
       "tuv_until": "2027-06",
-      "power_hp": 466,
+      "power_hp": 437,
       "location_raw": "München",
       "location_country": "DE",
       "origin_country": "EU",
