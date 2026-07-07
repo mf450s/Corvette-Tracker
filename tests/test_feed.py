@@ -60,6 +60,17 @@ def test_render_html_site_contains_cards_filters_and_image():
     assert "filter-pill" in html
 
 
+def test_render_outputs_probable_engine_note_when_engine_is_inferred():
+    inferred = listing(engine=None, probable_engine="LS2", engine_confidence=0.86, engine_note="Leistung 404 PS → wahrscheinlich LS2")
+    payload = build_feed_payload([inferred])
+
+    markdown = render_markdown_feed(payload)
+    html = render_html_site(payload)
+
+    assert "wahrscheinlich LS2" in markdown
+    assert "wahrscheinlich LS2" in html
+
+
 def test_render_html_site_shows_source_warnings():
     payload = build_feed_payload([listing()])
     payload["warnings"] = ["mobile.de: HTTP Error 403: Forbidden"]

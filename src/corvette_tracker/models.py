@@ -16,6 +16,9 @@ class Listing:
     price_eur: int | None = None
     mileage_km: int | None = None
     engine: str | None = None
+    probable_engine: str | None = None
+    engine_confidence: float | None = None
+    engine_note: str | None = None
     power_hp: int | None = None
     trim: str | None = None
     first_registration: str | None = None
