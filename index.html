@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corvette Tracker</title>
+  <style>
+    :root { color-scheme: dark; --bg:#09090b; --card:#141418; --muted:#a1a1aa; --text:#fafafa; --line:#27272a; --accent:#ef4444; --accent2:#f59e0b; }
+    * { box-sizing: border-box; } body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; background: radial-gradient(circle at top left, #3f0b0b, transparent 34rem), var(--bg); color:var(--text); }
+    header { max-width:1180px; margin:0 auto; padding:56px 20px 28px; }
+    .eyebrow { color:var(--accent2); text-transform:uppercase; letter-spacing:.14em; font-size:12px; font-weight:700; }
+    h1 { margin:.2em 0; font-size:clamp(40px, 7vw, 80px); line-height:.95; letter-spacing:-.06em; }
+    .lead { max-width:760px; color:var(--muted); font-size:18px; line-height:1.6; }
+    .stats { display:flex; flex-wrap:wrap; gap:12px; margin-top:24px; } .stat,.filter-pill { border:1px solid var(--line); border-radius:999px; padding:10px 14px; background:rgba(255,255,255,.04); }
+    .toolbar { max-width:1180px; margin:0 auto; padding:0 20px 18px; display:flex; gap:10px; flex-wrap:wrap; }
+    .filter-pill { color:var(--muted); }
+    main { max-width:1180px; margin:0 auto; padding:0 20px 64px; display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:18px; }
+    .card { overflow:hidden; border:1px solid var(--line); border-radius:24px; background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025)); box-shadow:0 18px 50px rgba(0,0,0,.24); }
+    .image { display:block; aspect-ratio:16/10; background:#18181b; overflow:hidden; } .image img { width:100%; height:100%; object-fit:cover; transition:transform .22s ease; } .card:hover img { transform:scale(1.035); } .placeholder { height:100%; display:grid; place-items:center; color:var(--muted); }
+    .card-body { padding:20px; } .meta { display:flex; justify-content:space-between; color:var(--muted); font-size:13px; gap:12px; } h2 { font-size:21px; line-height:1.15; margin:12px 0; letter-spacing:-.03em; } .price { font-size:30px; font-weight:800; margin:0 0 16px; color:white; }
+    dl { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin:0 0 14px; } dl div { border:1px solid var(--line); border-radius:14px; padding:10px; background:rgba(0,0,0,.15); } dt { color:var(--muted); font-size:12px; } dd { margin:3px 0 0; font-weight:700; }
+    .risk { color:var(--muted); min-height:1.5em; } .button { display:inline-flex; text-decoration:none; color:white; background:var(--accent); padding:11px 14px; border-radius:12px; font-weight:700; } .empty { color:var(--muted); grid-column:1/-1; }
+    .warnings { max-width:1180px; margin:0 auto 18px; padding:0 20px; color:#fecaca; } .warnings h2 { font-size:18px; margin:0 0 8px; } .warnings ul { border:1px solid #7f1d1d; border-radius:16px; padding:14px 18px 14px 34px; background:rgba(127,29,29,.25); }
+    footer { max-width:1180px; margin:0 auto; padding:0 20px 34px; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">C6 Corvette Angebotsfeed</div>
+    <h1>Corvette Tracker</h1>
+    <p class="lead">Aktuelle öffentlich gefundene C6-Angebote aus angebundenen Quellen. Mit Preis, Laufleistung, Motor, Risiko-Hinweisen und Bildern, soweit die Quelle sie ausliefert.</p>
+    <div class="stats"><span class="stat">5 aktive Treffer</span><span class="stat">5 neu</span><span class="stat">0 Preisänderungen</span><span class="stat">1 Warnungen</span></div>
+  </header>
+  <section class="toolbar"><span class="filter-pill">Grand Sport</span><span class="filter-pill">Z06</span><span class="filter-pill">ZR1</span><span class="filter-pill">ohne Risiko bevorzugen</span></section>
+  <section class="warnings"><h2>Quellen-Hinweise</h2><ul><li>mobile.de: failed to fetch https://suchen.mobile.de/fahrzeuge/search.html?dam=false&amp;fr=2005%3A2013&amp;isSearchRequest=true&amp;ms=5600%3B36%3B%3B&amp;ref=quickSearch&amp;s=Car&amp;sb=rel&amp;vc=Car: HTTP Error 403: Forbidden</li></ul></section>
+  <main>
+        <article class="card" data-listing-card data-trim="Base" data-risk="no">
+          <a class="image" href="https://www.autoscout24.de/angebote/chevrolet-corvette-c6-benzin-schwarz-cat_ma19mo1689-90de9d6c-973d-43cb-ba4e-7b1355956466" target="_blank" rel="noreferrer"><img src="https://prod.pictures.autoscout24.net/listing-images/90de9d6c-973d-43cb-ba4e-7b1355956466_a860c3a8-b2f1-4ebe-a6c5-a967087b8359.jpg/250x188.webp" alt="Chevrolet Corvette C6" loading="lazy"></a>
+          <div class="card-body">
+            <div class="meta"><span>AutoScout24</span><span>Score 65/100</span></div>
+            <h2>Chevrolet Corvette C6</h2>
+            <p class="price">41.900 €</p>
+            <dl>
+              <div><dt>km</dt><dd>61.000 km</dd></div>
+              <div><dt>Motor</dt><dd>k.A.</dd></div>
+              <div><dt>Variante</dt><dd>Base</dd></div>
+              <div><dt>EZ</dt><dd>2010-03</dd></div>
+              <div><dt>TÜV</dt><dd>k.A.</dd></div>
+              <div><dt>Ort</dt><dd>80809 München, Landeshauptstadt</dd></div>
+            </dl>
+            <p class="risk">Risiko: keine</p>
+            <a class="button" href="https://www.autoscout24.de/angebote/chevrolet-corvette-c6-benzin-schwarz-cat_ma19mo1689-90de9d6c-973d-43cb-ba4e-7b1355956466" target="_blank" rel="noreferrer">Angebot öffnen</a>
+          </div>
+        </article>
+        
+
+        <article class="card" data-listing-card data-trim="Base" data-risk="no">
+          <a class="image" href="https://www.kleinanzeigen.de/s-anzeige/chevrolet-corvette-c6-einzelstueck-ls3-schalter/3449930342-216-2819" target="_blank" rel="noreferrer"><img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/82/8203de51-741a-4caf-b312-a3200d94e525?rule=$_2.AUTO" alt="Chevrolet Corvette C6 Einzelstück LS3 Schalter" loading="lazy"></a>
+          <div class="card-body">
+            <div class="meta"><span>Kleinanzeigen</span><span>Score 65/100</span></div>
+            <h2>Chevrolet Corvette C6 Einzelstück LS3 Schalter</h2>
+            <p class="price">36.000 €</p>
+            <dl>
+              <div><dt>km</dt><dd>73.000 km</dd></div>
+              <div><dt>Motor</dt><dd>LS3</dd></div>
+              <div><dt>Variante</dt><dd>Base</dd></div>
+              <div><dt>EZ</dt><dd>2008-05</dd></div>
+              <div><dt>TÜV</dt><dd>k.A.</dd></div>
+              <div><dt>Ort</dt><dd>21709 Himmelpforten</dd></div>
+            </dl>
+            <p class="risk">Risiko: keine</p>
+            <a class="button" href="https://www.kleinanzeigen.de/s-anzeige/chevrolet-corvette-c6-einzelstueck-ls3-schalter/3449930342-216-2819" target="_blank" rel="noreferrer">Angebot öffnen</a>
+          </div>
+        </article>
+        
+
+        <article class="card" data-listing-card data-trim="Base" data-risk="no">
+          <a class="image" href="https://www.kleinanzeigen.de/s-anzeige/corvette-c6-loma-gt2-widebody-eu-modell-6gang-50tkm-kwv3-hls/3446216344-216-8879" target="_blank" rel="noreferrer"><img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/1c/1c722498-eedf-46bd-9372-46db1b80cb87?rule=$_2.AUTO" alt="Corvette C6 Loma GT2 Widebody|EU-Modell|6Gang|50tkm|KWV3 HLS" loading="lazy"></a>
+          <div class="card-body">
+            <div class="meta"><span>Kleinanzeigen</span><span>Score 65/100</span></div>
+            <h2>Corvette C6 Loma GT2 Widebody|EU-Modell|6Gang|50tkm|KWV3 HLS</h2>
+            <p class="price">20.694 €</p>
+            <dl>
+              <div><dt>km</dt><dd>50.000 km</dd></div>
+              <div><dt>Motor</dt><dd>LS3</dd></div>
+              <div><dt>Variante</dt><dd>Base</dd></div>
+              <div><dt>EZ</dt><dd>2007-07</dd></div>
+              <div><dt>TÜV</dt><dd>k.A.</dd></div>
+              <div><dt>Ort</dt><dd>69436 Schönbrunn</dd></div>
+            </dl>
+            <p class="risk">Risiko: keine</p>
+            <a class="button" href="https://www.kleinanzeigen.de/s-anzeige/corvette-c6-loma-gt2-widebody-eu-modell-6gang-50tkm-kwv3-hls/3446216344-216-8879" target="_blank" rel="noreferrer">Angebot öffnen</a>
+          </div>
+        </article>
+        
+
+        <article class="card" data-listing-card data-trim="Z06" data-risk="yes">
+          <a class="image" href="https://www.kleinanzeigen.de/s-anzeige/chevrolet-corvette-c6-z51/3442920921-216-9604" target="_blank" rel="noreferrer"><img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/01/0144ac31-02de-4a3f-8909-65ff09c2d78e?rule=$_2.AUTO" alt="Chevrolet Corvette C6 z51" loading="lazy"></a>
+          <div class="card-body">
+            <div class="meta"><span>Kleinanzeigen</span><span>Score 64/100</span></div>
+            <h2>Chevrolet Corvette C6 z51</h2>
+            <p class="price">19.000 €</p>
+            <dl>
+              <div><dt>km</dt><dd>120.000 km</dd></div>
+              <div><dt>Motor</dt><dd>LS2</dd></div>
+              <div><dt>Variante</dt><dd>Z06</dd></div>
+              <div><dt>EZ</dt><dd>2006-06</dd></div>
+              <div><dt>TÜV</dt><dd>k.A.</dd></div>
+              <div><dt>Ort</dt><dd>83471 Berchtesgaden</dd></div>
+            </dl>
+            <p class="risk">Risiko: mileage_unclear</p>
+            <a class="button" href="https://www.kleinanzeigen.de/s-anzeige/chevrolet-corvette-c6-z51/3442920921-216-9604" target="_blank" rel="noreferrer">Angebot öffnen</a>
+          </div>
+        </article>
+        
+
+        <article class="card" data-listing-card data-trim="Base" data-risk="no">
+          <a class="image" href="https://www.autoscout24.de/angebote/chevrolet-corvette-3-lt-base-z51-benzin-rot-cat_ma19mo1689-e686ab89-ecee-49e3-9582-94fd0a440a41" target="_blank" rel="noreferrer"><img src="https://prod.pictures.autoscout24.net/listing-images/e686ab89-ecee-49e3-9582-94fd0a440a41_1cddae22-59c3-4a22-91f1-591e1116a2db.jpg/250x188.webp" alt="Chevrolet Corvette 3 LT base Z51" loading="lazy"></a>
+          <div class="card-body">
+            <div class="meta"><span>AutoScout24</span><span>Score 58/100</span></div>
+            <h2>Chevrolet Corvette 3 LT base Z51</h2>
+            <p class="price">28.900 €</p>
+            <dl>
+              <div><dt>km</dt><dd>k.A.</dd></div>
+              <div><dt>Motor</dt><dd>k.A.</dd></div>
+              <div><dt>Variante</dt><dd>Base</dd></div>
+              <div><dt>EZ</dt><dd>2007-02</dd></div>
+              <div><dt>TÜV</dt><dd>k.A.</dd></div>
+              <div><dt>Ort</dt><dd>10999 Berlin, Stadt</dd></div>
+            </dl>
+            <p class="risk">Risiko: keine</p>
+            <a class="button" href="https://www.autoscout24.de/angebote/chevrolet-corvette-3-lt-base-z51-benzin-rot-cat_ma19mo1689-e686ab89-ecee-49e3-9582-94fd0a440a41" target="_blank" rel="noreferrer">Angebot öffnen</a>
+          </div>
+        </article>
+        </main>
+  <footer>Generiert: 2026-07-07T21:59:58+00:00 · Exporte: feed/latest.md, data/exports/latest.json, data/exports/latest.csv</footer>
+</body>
+</html>
