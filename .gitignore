@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.egg-info/
+data/raw/
+data/corvette_tracker.sqlite
+site/
+feed/latest.md
+feed/archive/*.md
+data/exports/*.json
+data/exports/*.csv

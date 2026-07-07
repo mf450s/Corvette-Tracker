@@ -1,0 +1,12 @@
+sources:
+  autoscout24:
+    enabled: true
+    url: "https://www.autoscout24.de/lst/chevrolet/corvette?atype=C&cy=D&desc=0&fregfrom=2005&fregto=2013&sort=standard&ustate=N%2CU"
+  kleinanzeigen:
+    enabled: true
+    url: "https://www.kleinanzeigen.de/s-autos/chevrolet-corvette-c6/k0c216"
+  mobile_de:
+    enabled: true # may return access denied from some server/IP ranges; connector reports it as warning.
+    url: "https://suchen.mobile.de/fahrzeuge/search.html?dam=false&fr=2005%3A2013&isSearchRequest=true&ms=5600%3B36%3B%3B&ref=quickSearch&s=Car&sb=rel&vc=Car"
+output_dir: "."
+database_path: "data/corvette_tracker.sqlite"

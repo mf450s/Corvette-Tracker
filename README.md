@@ -729,3 +729,48 @@ v1 ist fertig, wenn:
 ## Grundsatz
 
 Erst robuste Datenpipeline, dann schöne Oberfläche. Wenn die Extraktion und Historie stimmen, kann der Feed später beliebig hübsch werden.
+
+---
+
+## Implementierung v1 — Website + Live-Tracker
+
+Dieses Repo enthält jetzt eine lauffähige Python-Implementierung für den C6-Corvette-Tracker:
+
+- echte Quellabfrage für AutoScout24 und Kleinanzeigen
+- mobile.de-Connector vorhanden; mobile.de kann aus Server-/CI-Umgebungen `Access denied`/HTTP 403 zurückgeben und wird dann als Quellen-Warnung im Export angezeigt
+- Normalisierung von Preis, km, EZ, TÜV/HU, Motor, Trim, Unfall-/Risiko-Hinweisen
+- Dedupe/Cluster über URL, VIN und Soft-Signale
+- SQLite-Snapshots für neue/geänderte Listings und Preisänderungen
+- Exporte als `feed/latest.md`, `data/exports/latest.json`, `data/exports/latest.csv`
+- statische Website mit Bildern unter `site/index.html` und zusätzlich `index.html` für einfaches Hosting
+
+### Setup
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+cp config.example.yaml config.yaml
+```
+
+### Live-Lauf
+
+```bash
+.venv/bin/python -m corvette_tracker.cli run --config config.yaml --output-dir .
+```
+
+### Tests
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+### Erzeugte Dateien
+
+```text
+site/index.html                 # Website
+index.html                      # Kopie für GitHub Pages/root hosting
+feed/latest.md                  # Markdown-Feed
+data/exports/latest.json        # JSON Export
+data/exports/latest.csv         # CSV Export
+data/corvette_tracker.sqlite    # lokale Historie/Snapshots
+```
