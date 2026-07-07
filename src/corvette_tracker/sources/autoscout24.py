@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -11,10 +12,23 @@ from ..normalize import normalize_listing
 
 SOURCE = "AutoScout24"
 DEFAULT_URL = "https://www.autoscout24.de/lst/chevrolet/corvette?atype=C&cy=D&desc=0&fregfrom=2005&fregto=2013&sort=standard&ustate=N%2CU"
+HIGH_RES_IMAGE_VARIANT = "1920x1080.webp"
 
 
 def _text(node) -> str:
     return " ".join(node.get_text(" ", strip=True).split()) if node else ""
+
+
+def normalize_autoscout24_image_url(url: str) -> str:
+    """Prefer a large AutoScout24 CDN rendition over the search thumbnail.
+
+    AutoScout24 image URLs are commonly shaped like:
+    `.../listing-image.jpg/250x188.webp`. The CDN accepts larger rendition
+    suffixes for the same source image. Keep unrelated URLs unchanged.
+    """
+    if "prod.pictures.autoscout24.net/listing-images/" not in url:
+        return url
+    return re.sub(r"/\d+x\d+\.(?:webp|jpg)$", f"/{HIGH_RES_IMAGE_VARIANT}", url)
 
 
 def _first_href(article, base_url: str) -> str | None:
@@ -31,7 +45,7 @@ def _images(article, base_url: str) -> list[str]:
     for img in article.select("img"):
         src = img.get("src") or img.get("data-src") or img.get("data-lazy-src")
         if src and not src.startswith("data:"):
-            urls.append(urljoin(base_url, src))
+            urls.append(normalize_autoscout24_image_url(urljoin(base_url, src)))
     return list(dict.fromkeys(urls))
 
 
@@ -63,7 +77,7 @@ def _parse_next_data(soup: BeautifulSoup, base_url: str) -> list[Listing]:
             description=description,
             price_text=str(price.get("priceFormatted") or price.get("priceRaw") or ""),
             location_raw=location_raw,
-            image_urls=[str(image) for image in (raw.get("images") or []) if image],
+            image_urls=[normalize_autoscout24_image_url(str(image)) for image in (raw.get("images") or []) if image],
         )
         if listing:
             if price.get("priceRaw"):

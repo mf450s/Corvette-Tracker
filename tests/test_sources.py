@@ -1,4 +1,4 @@
-from corvette_tracker.sources.autoscout24 import parse_autoscout24_search
+from corvette_tracker.sources.autoscout24 import normalize_autoscout24_image_url, parse_autoscout24_search
 from corvette_tracker.sources.kleinanzeigen import parse_kleinanzeigen_search
 
 
@@ -6,7 +6,7 @@ AUTOSCOUT_HTML = '''
 <html><body>
 <article data-testid="list-item" id="as24-123">
   <a href="/angebote/chevrolet-corvette-c6-z06-abc123">Chevrolet Corvette C6 Z06 LS7</a>
-  <img src="https://img.example/as24.jpg" />
+  <img src="https://prod.pictures.autoscout24.net/listing-images/as24_abc.jpg/250x188.webp" />
   <p>59.900 €</p><p>72.000 km</p><p>05/2008</p><p>512 PS</p><p>München</p>
   <span>unfallfrei, HU 06/2027</span>
 </article>
@@ -35,7 +35,7 @@ def test_parse_autoscout24_search_extracts_normalized_listings():
     assert listing.source == "AutoScout24"
     assert listing.source_listing_id == "as24-123"
     assert listing.price_eur == 59900
-    assert listing.image_urls == ["https://img.example/as24.jpg"]
+    assert listing.image_urls == ["https://prod.pictures.autoscout24.net/listing-images/as24_abc.jpg/1920x1080.webp"]
     assert listing.engine == "LS7"
 
 
@@ -54,6 +54,19 @@ def test_parse_autoscout24_next_data_without_anchor_href():
     assert listings[0].title == "Chevrolet Corvette C6"
     assert listings[0].price_eur == 41900
     assert listings[0].mileage_km == 61000
+    assert listings[0].image_urls == ["https://img.example/as24-next.webp"]
+
+
+def test_normalize_autoscout24_image_url_prefers_large_webp_variant():
+    url = "https://prod.pictures.autoscout24.net/listing-images/abc.jpg/250x188.webp"
+
+    assert normalize_autoscout24_image_url(url) == "https://prod.pictures.autoscout24.net/listing-images/abc.jpg/1920x1080.webp"
+
+
+def test_normalize_autoscout24_image_url_leaves_non_autoscout_urls_alone():
+    url = "https://img.example/as24-next.webp"
+
+    assert normalize_autoscout24_image_url(url) == url
 
 
 def test_parse_kleinanzeigen_search_extracts_normalized_listings():
