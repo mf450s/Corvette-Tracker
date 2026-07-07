@@ -1,5 +1,9 @@
 from corvette_tracker.sources.autoscout24 import normalize_autoscout24_image_url, parse_autoscout24_search
-from corvette_tracker.sources.kleinanzeigen import parse_kleinanzeigen_search
+from corvette_tracker.sources.kleinanzeigen import (
+    normalize_kleinanzeigen_image_url,
+    parse_kleinanzeigen_detail_images,
+    parse_kleinanzeigen_search,
+)
 
 
 AUTOSCOUT_HTML = '''
@@ -80,3 +84,28 @@ def test_parse_kleinanzeigen_search_extracts_normalized_listings():
     assert listing.price_eur == 54900
     assert listing.location_raw == "Hamburg"
     assert listing.image_urls == ["https://img.example/ka.jpg"]
+
+
+def test_normalize_kleinanzeigen_image_url_prefers_detail_gallery_variant():
+    url = "https://img.kleinanzeigen.de/api/v1/prod-ads/images/82/abc?rule=$_2.AUTO"
+
+    assert normalize_kleinanzeigen_image_url(url) == "https://img.kleinanzeigen.de/api/v1/prod-ads/images/82/abc?rule=$_59.AUTO"
+
+
+def test_parse_kleinanzeigen_detail_images_extracts_multiple_unique_gallery_images():
+    html = '''
+    <html><body>
+      <img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/82/first?rule=$_59.AUTO" />
+      <script type="application/ld+json">
+        {"@type":"ImageObject","contentUrl":"https://img.kleinanzeigen.de/api/v1/prod-ads/images/96/second?rule=$_2.AUTO"}
+      </script>
+      <script>gallery.push('https://img.kleinanzeigen.de/api/v1/prod-ads/images/9b/third?rule=$_57.AUTO');</script>
+      <img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/82/first?rule=$_2.AUTO" />
+    </body></html>
+    '''
+
+    assert parse_kleinanzeigen_detail_images(html, "https://www.kleinanzeigen.de/s-anzeige/x") == [
+        "https://img.kleinanzeigen.de/api/v1/prod-ads/images/82/first?rule=$_59.AUTO",
+        "https://img.kleinanzeigen.de/api/v1/prod-ads/images/96/second?rule=$_59.AUTO",
+        "https://img.kleinanzeigen.de/api/v1/prod-ads/images/9b/third?rule=$_59.AUTO",
+    ]
