@@ -35,6 +35,16 @@ def engine_note_display(item: dict[str, Any]) -> str | None:
     return str(note)
 
 
+def render_gallery(images: list[str], title: str) -> str:
+    if not images:
+        return ""
+    thumbnails = "".join(
+        f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer" data-gallery-image><img src="{html.escape(url)}" alt="{title} Bild {index}" loading="lazy"></a>'
+        for index, url in enumerate(images, start=1)
+    )
+    return f'<div class="gallery"><div class="gallery-count">{len(images)} Bilder</div><div class="gallery-strip">{thumbnails}</div></div>'
+
+
 def build_feed_payload(listings: list[Listing]) -> dict[str, Any]:
     ordered = sorted(listings, key=lambda item: (item.score, item.price_eur or 0), reverse=True)
     generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
@@ -93,15 +103,18 @@ def render_html_site(payload: dict[str, Any]) -> str:
     cards = []
     for item in payload["listings"]:
         title = html.escape(item["title"])
-        image = html.escape((item.get("image_urls") or [""])[0])
+        images = [str(url) for url in (item.get("image_urls") or [])]
+        image = html.escape((images or [""])[0])
         risk = ", ".join(item.get("risk_flags") or []) or "keine"
         img_html = f'<img src="{image}" alt="{title}" loading="lazy">' if image else '<div class="placeholder">Kein Bild</div>'
+        gallery_html = render_gallery(images, title)
         engine_text = html.escape(engine_display(item))
         engine_note = engine_note_display(item)
         engine_note_html = f'<p class="engine-note">{html.escape(engine_note)}</p>' if engine_note else ""
         cards.append(f'''
         <article class="card" data-listing-card data-trim="{html.escape(str(item.get('trim') or 'unknown'))}" data-risk="{'yes' if item.get('risk_flags') else 'no'}">
           <a class="image" href="{html.escape(item['url'])}" target="_blank" rel="noreferrer">{img_html}</a>
+          {gallery_html}
           <div class="card-body">
             <div class="meta"><span>{html.escape(item['source'])}</span><span>Score {item['score']}/100</span></div>
             <h2>{title}</h2>
@@ -146,6 +159,7 @@ def render_html_site(payload: dict[str, Any]) -> str:
     main {{ max-width:1180px; margin:0 auto; padding:0 20px 64px; display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:18px; }}
     .card {{ overflow:hidden; border:1px solid var(--line); border-radius:24px; background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025)); box-shadow:0 18px 50px rgba(0,0,0,.24); }}
     .image {{ display:block; aspect-ratio:16/10; background:#18181b; overflow:hidden; }} .image img {{ width:100%; height:100%; object-fit:cover; transition:transform .22s ease; }} .card:hover img {{ transform:scale(1.035); }} .placeholder {{ height:100%; display:grid; place-items:center; color:var(--muted); }}
+    .gallery {{ border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:rgba(0,0,0,.18); padding:10px 12px; }} .gallery-count {{ color:var(--muted); font-size:12px; margin-bottom:8px; }} .gallery-strip {{ display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; scrollbar-width:thin; }} .gallery-strip a {{ flex:0 0 64px; width:64px; height:48px; border-radius:10px; overflow:hidden; border:1px solid var(--line); background:#18181b; }} .gallery-strip img {{ width:100%; height:100%; object-fit:cover; display:block; }}
     .card-body {{ padding:20px; }} .meta {{ display:flex; justify-content:space-between; color:var(--muted); font-size:13px; gap:12px; }} h2 {{ font-size:21px; line-height:1.15; margin:12px 0; letter-spacing:-.03em; }} .price {{ font-size:30px; font-weight:800; margin:0 0 16px; color:white; }}
     dl {{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin:0 0 14px; }} dl div {{ border:1px solid var(--line); border-radius:14px; padding:10px; background:rgba(0,0,0,.15); }} dt {{ color:var(--muted); font-size:12px; }} dd {{ margin:3px 0 0; font-weight:700; }}
     .engine-note {{ color:var(--accent2); font-size:13px; margin:0 0 10px; }} .risk {{ color:var(--muted); min-height:1.5em; }} .button {{ display:inline-flex; text-decoration:none; color:white; background:var(--accent); padding:11px 14px; border-radius:12px; font-weight:700; }} .empty {{ color:var(--muted); grid-column:1/-1; }}
