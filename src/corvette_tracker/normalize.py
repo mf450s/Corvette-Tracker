@@ -90,6 +90,23 @@ def extract_engine(text: str) -> str | None:
     return None
 
 
+def extract_probable_engine_from_power(power_hp: int | None) -> tuple[str, float] | None:
+    if power_hp is None:
+        return None
+    # C6 EU/US power figures overlap a bit by market/model year. Keep this as
+    # an explicit confidence-bearing inference, never as a certain engine code.
+    ranges: tuple[tuple[int, int, str, float], ...] = (
+        (395, 410, "LS2", 0.86),
+        (425, 445, "LS3", 0.86),
+        (500, 520, "LS7", 0.90),
+        (630, 660, "LS9", 0.92),
+    )
+    for lower, upper, engine, confidence in ranges:
+        if lower <= power_hp <= upper:
+            return engine, confidence
+    return None
+
+
 def extract_trim(text: str) -> str | None:
     upper = (text or "").upper()
     if "ZR1" in upper:
@@ -212,6 +229,15 @@ def normalize_listing(
     accident = extract_accident_status(combined)
     risks = extract_risk_flags(combined)
     engine = extract_engine(combined)
+    power_hp = extract_power_hp(combined)
+    probable_engine_match = extract_probable_engine_from_power(power_hp) if engine is None else None
+    probable_engine = probable_engine_match[0] if probable_engine_match else None
+    engine_confidence = 1.0 if engine else probable_engine_match[1] if probable_engine_match else None
+    engine_note = (
+        "Motorcode explizit im Inserat erkannt"
+        if engine
+        else f"Leistung {power_hp} PS → wahrscheinlich {probable_engine}" if probable_engine and power_hp else None
+    )
     trim = extract_trim(combined)
     damage = None
     if "damage_reported" in risks:
@@ -228,7 +254,10 @@ def normalize_listing(
         price_eur=price,
         mileage_km=mileage,
         engine=engine,
-        power_hp=extract_power_hp(combined),
+        probable_engine=probable_engine,
+        engine_confidence=engine_confidence,
+        engine_note=engine_note,
+        power_hp=power_hp,
         trim=trim,
         first_registration=extract_first_registration(combined),
         tuv_until=extract_tuv_until(combined),

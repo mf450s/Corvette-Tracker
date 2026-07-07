@@ -18,6 +18,23 @@ def format_km(value: int | None) -> str:
     return "k.A." if value is None else f"{value:,}".replace(",", ".") + " km"
 
 
+def engine_display(item: dict[str, Any]) -> str:
+    if item.get("engine"):
+        return str(item["engine"])
+    if item.get("probable_engine"):
+        confidence = item.get("engine_confidence")
+        suffix = f" ({confidence:.0%})" if isinstance(confidence, int | float) else ""
+        return f"wahrscheinlich {item['probable_engine']}{suffix}"
+    return "k.A."
+
+
+def engine_note_display(item: dict[str, Any]) -> str | None:
+    note = item.get("engine_note")
+    if not note or item.get("engine"):
+        return None
+    return str(note)
+
+
 def build_feed_payload(listings: list[Listing]) -> dict[str, Any]:
     ordered = sorted(listings, key=lambda item: (item.score, item.price_eur or 0), reverse=True)
     generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
@@ -48,10 +65,15 @@ def render_markdown_feed(payload: dict[str, Any]) -> str:
         ]
         if item.get("image_urls"):
             lines += [f"![{item['title']}]({item['image_urls'][0]})", ""]
+        engine_note = engine_note_display(item)
         lines += [
             f"- Quelle: {item['source']}",
             f"- Score: {item['score']}/100",
-            f"- Variante/Motor: {item.get('trim') or 'k.A.'} / {item.get('engine') or 'k.A.'}",
+            f"- Variante/Motor: {item.get('trim') or 'k.A.'} / {engine_display(item)}",
+        ]
+        if engine_note:
+            lines.append(f"- Motor-Hinweis: {engine_note}")
+        lines += [
             f"- Kilometer: {format_km(item.get('mileage_km'))}",
             f"- EZ: {item.get('first_registration') or 'k.A.'}",
             f"- TÜV/HU: {item.get('tuv_until') or 'k.A.'}",
@@ -74,6 +96,9 @@ def render_html_site(payload: dict[str, Any]) -> str:
         image = html.escape((item.get("image_urls") or [""])[0])
         risk = ", ".join(item.get("risk_flags") or []) or "keine"
         img_html = f'<img src="{image}" alt="{title}" loading="lazy">' if image else '<div class="placeholder">Kein Bild</div>'
+        engine_text = html.escape(engine_display(item))
+        engine_note = engine_note_display(item)
+        engine_note_html = f'<p class="engine-note">{html.escape(engine_note)}</p>' if engine_note else ""
         cards.append(f'''
         <article class="card" data-listing-card data-trim="{html.escape(str(item.get('trim') or 'unknown'))}" data-risk="{'yes' if item.get('risk_flags') else 'no'}">
           <a class="image" href="{html.escape(item['url'])}" target="_blank" rel="noreferrer">{img_html}</a>
@@ -83,12 +108,13 @@ def render_html_site(payload: dict[str, Any]) -> str:
             <p class="price">{format_eur(item.get('price_eur'))}</p>
             <dl>
               <div><dt>km</dt><dd>{format_km(item.get('mileage_km'))}</dd></div>
-              <div><dt>Motor</dt><dd>{html.escape(str(item.get('engine') or 'k.A.'))}</dd></div>
+              <div><dt>Motor</dt><dd>{engine_text}</dd></div>
               <div><dt>Variante</dt><dd>{html.escape(str(item.get('trim') or 'k.A.'))}</dd></div>
               <div><dt>EZ</dt><dd>{html.escape(str(item.get('first_registration') or 'k.A.'))}</dd></div>
               <div><dt>TÜV</dt><dd>{html.escape(str(item.get('tuv_until') or 'k.A.'))}</dd></div>
               <div><dt>Ort</dt><dd>{html.escape(str(item.get('location_raw') or 'k.A.'))}</dd></div>
             </dl>
+            {engine_note_html}
             <p class="risk">Risiko: {html.escape(risk)}</p>
             <a class="button" href="{html.escape(item['url'])}" target="_blank" rel="noreferrer">Angebot öffnen</a>
           </div>
@@ -122,7 +148,7 @@ def render_html_site(payload: dict[str, Any]) -> str:
     .image {{ display:block; aspect-ratio:16/10; background:#18181b; overflow:hidden; }} .image img {{ width:100%; height:100%; object-fit:cover; transition:transform .22s ease; }} .card:hover img {{ transform:scale(1.035); }} .placeholder {{ height:100%; display:grid; place-items:center; color:var(--muted); }}
     .card-body {{ padding:20px; }} .meta {{ display:flex; justify-content:space-between; color:var(--muted); font-size:13px; gap:12px; }} h2 {{ font-size:21px; line-height:1.15; margin:12px 0; letter-spacing:-.03em; }} .price {{ font-size:30px; font-weight:800; margin:0 0 16px; color:white; }}
     dl {{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin:0 0 14px; }} dl div {{ border:1px solid var(--line); border-radius:14px; padding:10px; background:rgba(0,0,0,.15); }} dt {{ color:var(--muted); font-size:12px; }} dd {{ margin:3px 0 0; font-weight:700; }}
-    .risk {{ color:var(--muted); min-height:1.5em; }} .button {{ display:inline-flex; text-decoration:none; color:white; background:var(--accent); padding:11px 14px; border-radius:12px; font-weight:700; }} .empty {{ color:var(--muted); grid-column:1/-1; }}
+    .engine-note {{ color:var(--accent2); font-size:13px; margin:0 0 10px; }} .risk {{ color:var(--muted); min-height:1.5em; }} .button {{ display:inline-flex; text-decoration:none; color:white; background:var(--accent); padding:11px 14px; border-radius:12px; font-weight:700; }} .empty {{ color:var(--muted); grid-column:1/-1; }}
     .warnings {{ max-width:1180px; margin:0 auto 18px; padding:0 20px; color:#fecaca; }} .warnings h2 {{ font-size:18px; margin:0 0 8px; }} .warnings ul {{ border:1px solid #7f1d1d; border-radius:16px; padding:14px 18px 14px 34px; background:rgba(127,29,29,.25); }}
     footer {{ max-width:1180px; margin:0 auto; padding:0 20px 34px; color:var(--muted); }}
   </style>
