@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import fields
 from pathlib import Path
+from typing import Any
 
 from .models import Listing
 
@@ -25,21 +27,44 @@ CREATE TABLE IF NOT EXISTS snapshots (
   payload_json TEXT NOT NULL,
   FOREIGN KEY(listing_id) REFERENCES listings(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS manual_overrides (
+  listing_id TEXT PRIMARY KEY,
+  payload_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(listing_id) REFERENCES listings(id) ON DELETE CASCADE
+);
 """
+
+LISTING_FIELDS = {field.name for field in fields(Listing)}
+PROTECTED_OVERRIDE_FIELDS = {"id", "source", "source_listing_id", "url", "change_type", "previous_price_eur", "cluster_id"}
+EDITABLE_FIELDS = LISTING_FIELDS - PROTECTED_OVERRIDE_FIELDS
 
 
 class TrackerStore:
     def __init__(self, path: str | Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.path)
+        self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
         self.conn.commit()
 
+    def _overrides_for(self, listing_id: str) -> dict[str, Any]:
+        row = self.conn.execute("SELECT payload_json FROM manual_overrides WHERE listing_id = ?", (listing_id,)).fetchone()
+        return dict(json.loads(row["payload_json"])) if row else {}
+
+    def _apply_overrides(self, listing: Listing) -> Listing:
+        overrides = self._overrides_for(listing.id)
+        if not overrides:
+            return listing
+        data = listing.to_dict()
+        data.update(overrides)
+        return Listing(**data)
+
     def upsert_listings(self, listings: list[Listing]) -> list[Listing]:
         result: list[Listing] = []
-        for listing in listings:
+        for source_listing in listings:
+            listing = self._apply_overrides(source_listing)
             previous = self.conn.execute("SELECT payload_json, price_eur, mileage_km FROM listings WHERE id = ?", (listing.id,)).fetchone()
             if previous is None:
                 listing.change_type = "new"
@@ -72,6 +97,52 @@ class TrackerStore:
         self.conn.commit()
         return result
 
+    def get_listing(self, listing_id: str) -> Listing | None:
+        row = self.conn.execute("SELECT payload_json FROM listings WHERE id = ?", (listing_id,)).fetchone()
+        if row is None:
+            return None
+        return Listing(**json.loads(row["payload_json"]))
+
     def list_active(self) -> list[Listing]:
         rows = self.conn.execute("SELECT payload_json FROM listings ORDER BY COALESCE(price_eur, 999999999), id").fetchall()
         return [Listing(**json.loads(row["payload_json"])) for row in rows]
+
+    def update_overrides(self, listing_id: str, updates: dict[str, Any]) -> Listing:
+        current = self.get_listing(listing_id)
+        if current is None:
+            raise KeyError(listing_id)
+        unknown = sorted(set(updates) - EDITABLE_FIELDS)
+        if unknown:
+            raise ValueError(f"Unsupported override fields: {', '.join(unknown)}")
+
+        overrides = self._overrides_for(listing_id)
+        for key, value in updates.items():
+            if value == "":
+                value = None
+            overrides[key] = value
+        override_payload = json.dumps(overrides, ensure_ascii=False, sort_keys=True)
+        self.conn.execute(
+            """
+            INSERT INTO manual_overrides (listing_id, payload_json, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(listing_id) DO UPDATE SET
+              payload_json=excluded.payload_json,
+              updated_at=CURRENT_TIMESTAMP
+            """,
+            (listing_id, override_payload),
+        )
+
+        data = current.to_dict()
+        data.update(overrides)
+        updated = Listing(**data)
+        payload = json.dumps(updated.to_dict(), ensure_ascii=False, sort_keys=True)
+        self.conn.execute(
+            "UPDATE listings SET payload_json = ?, price_eur = ?, mileage_km = ? WHERE id = ?",
+            (payload, updated.price_eur, updated.mileage_km, listing_id),
+        )
+        self.conn.execute(
+            "INSERT INTO snapshots (listing_id, price_eur, mileage_km, change_type, payload_json) VALUES (?, ?, ?, ?, ?)",
+            (listing_id, updated.price_eur, updated.mileage_km, "manual_override", payload),
+        )
+        self.conn.commit()
+        return updated

@@ -23,6 +23,8 @@ Der Fokus liegt bewusst auf **C6 (2005–2013)**. Andere Corvette-Generationen w
 |---|---:|---|
 | AutoScout24 | aktiv | Such-HTML/`__NEXT_DATA__`, Bilder werden auf große CDN-Variante normalisiert (`1920x1080.webp`) |
 | Kleinanzeigen | aktiv | Suchseite + Detailseiten; Detail-Galerien werden geladen und als mehrere Bilder exportiert |
+| AutoUncle | aktiv / manchmal blockiert | Öffentliche Suchseite; liefert zusätzliche Corvette-Treffer, kann aus Server-Umgebungen intermittierend HTTP 403 werfen und wird dann als Quellen-Warnung behandelt |
+| Classic Trader | aktiv / oft leer | JSON-LD/öffentliche Suchseite; aktuell häufig 0 C6-Angebote, aber der Connector parsed vorhandene C6-Listings sauber |
 | mobile.de | optional / oft blockiert | Connector vorhanden, aber mobile.de liefert aus Server-/CI-Umgebungen häufig `Access denied` / HTTP 403. Der Lauf bricht dann nicht ab, sondern zeigt eine Quellen-Warnung in JSON/HTML. |
 
 Keine Login-/Captcha-Umgehung. Keine privaten Kontaktdaten werden bewusst gespeichert.
@@ -59,6 +61,35 @@ Ohne explizite Config geht auch:
 .venv/bin/python -m corvette_tracker.cli run --output-dir .
 ```
 
+## Docker / WebUI
+
+Das Projekt kann direkt als kombinierter Frontend+Backend-Container laufen. Die WebUI ist danach unter `http://localhost:8096` erreichbar und zeigt die Listings aus der SQLite-Datenbank an. Über die WebUI können einzelne Felder nachgebessert werden; diese manuellen Overrides werden in SQLite gespeichert und bei späteren Crawls nicht mehr durch Parser-/Quellwerte überschrieben.
+
+```bash
+docker build -t corvette-tracker:local .
+docker run --rm -p 8096:8096 \
+  -v corvette-tracker-data:/app/runtime \
+  -e CORVETTE_TRACKER_CRON_INTERVAL=6h \
+  corvette-tracker:local
+```
+
+Oder mit Compose:
+
+```bash
+docker compose up --build
+```
+
+Wichtige Docker-ENV-Variablen:
+
+| Variable | Default | Bedeutung |
+|---|---|---|
+| `CORVETTE_TRACKER_CRON_INTERVAL` | `6h` | Crawl-Intervall: Sekunden (`300`), Minuten (`15m`), Stunden (`2h`), Tage (`1d`) oder `never`/`off` zum Deaktivieren |
+| `CORVETTE_TRACKER_RUN_ON_START` | `true` | Führt beim Containerstart direkt einen Crawl aus |
+| `CORVETTE_TRACKER_PORT` / `PORT` | `8096` | HTTP-Port im Container |
+| `CORVETTE_TRACKER_OUTPUT_DIR` | `/app/runtime` | Persistente Runtime-Dateien, Exporte und Website |
+| `CORVETTE_TRACKER_DATABASE` | `/app/runtime/data/corvette_tracker.sqlite` | SQLite-Datei inkl. Snapshots und manueller Overrides |
+| `CORVETTE_TRACKER_CONFIG` | `/app/config.yaml` | YAML-Config; kann per Volume überschrieben werden |
+
 ## Tests
 
 ```bash
@@ -82,15 +113,27 @@ data/corvette_tracker.sqlite    # lokale Historie / Snapshots
 
 ## Statische Website
 
+Öffentliche Bereitstellung auf the deployment host:
+
+- Domain: `https://<private-domain>/`
+- Caddy: `<private-caddy-config>`
+- systemd: `<private-service-unit>`
+- Upstream: `<private-upstream>`
+- the authentication proxy: bewusst nicht vorgeschaltet
+- Serviert wird nur `site/`, nicht das komplette Repository.
+
 Die Website zeigt pro Listing:
 
 - Bild / Galerie-Thumbnails
 - Quelle und Link zum Inserat
 - Score
 - Preis
-- Laufleistung
 - Motor / wahrscheinlicher Motor
+- PS
+- Laufleistung
+- Getriebe, z. B. Schalter oder Automatik
 - Trim / Variante
+- Karosserie, z. B. Cabrio, Coupé oder Targa
 - EZ
 - TÜV/HU
 - Standort
@@ -109,12 +152,17 @@ Der JSON-Export enthält u. a.:
   "title": "Chevrolet Corvette C6",
   "generation": "C6",
   "price_eur": 41900,
+  "price_label": null,
   "mileage_km": 61000,
   "engine": null,
   "probable_engine": "LS2",
   "engine_confidence": 0.86,
   "engine_note": "Leistung 404 PS → wahrscheinlich LS2",
   "power_hp": 404,
+  "estimated_power_hp": null,
+  "power_note": null,
+  "body_style": "Coupé",
+  "transmission": "automatic",
   "trim": "Base",
   "first_registration": "2010-03",
   "tuv_until": null,
@@ -129,12 +177,15 @@ Der JSON-Export enthält u. a.:
 
 ## Motor-Erkennung
 
-Der Tracker unterscheidet zwischen sicher erkanntem und wahrscheinlich abgeleitetem Motor:
+Der Tracker unterscheidet zwischen sicher erkanntem und wahrscheinlich abgeleitetem Motor sowie sicherer und geschätzter Leistung:
 
 - `engine`: nur wenn ein Motorcode oder eindeutiger Hubraum-/Trim-Hinweis im Inserat steht (`LS2`, `LS3`, `LS7`, `LS9`)
 - `probable_engine`: wenn kein sicherer Motorcode vorhanden ist, aber die Leistung zur C6 passt
 - `engine_confidence`: Confidence der Ableitung
 - `engine_note`: Erklärung für die Ableitung
+- `power_hp`: explizit erkannte PS-Angabe aus dem Inserat
+- `estimated_power_hp`: geschätzte Serienleistung aus erkanntem Motor, wenn das Inserat keine PS nennt
+- `power_note`: Hinweis/Evidence zur geschätzten Leistung
 
 Aktuelle Heuristik:
 
@@ -172,6 +223,57 @@ Kleinanzeigen zeigt in der Suchliste meist nur ein Bild. Der Connector lädt des
 ```
 
 Wenn die Detailseite fehlschlägt, bleibt das Suchlistenbild als Fallback erhalten.
+
+## AI-Enrichment-Hook
+
+Das Projekt enthält eine vorbereitete Erweiterungsschicht für spätere Bild+Text-Auswertung durch eine KI. Der Tracker selbst bringt keinen festen Provider und keinen API-Key mit. Stattdessen kann ein Provider als Python-Klasse angebunden werden.
+
+Die AI-Schicht bekommt pro Listing:
+
+- Titel
+- Beschreibungstext
+- Bild-URLs, begrenzt über `max_images`
+- bereits bekannte strukturierte Felder wie Preis, km, Motor, Trim, Risiko-Flags
+
+Der Provider gibt ein `EnrichmentResult` zurück. Aktuell vorgesehene Ergänzungsfelder:
+
+- `exterior_color`
+- `interior_color`
+- `transmission`
+- `eu_spec`
+- `equipment`
+- `visual_flags`
+- zusätzliche `risk_flags`
+- `notes`
+- `evidence`
+
+Wichtig: AI-Ergebnisse überschreiben keine bereits explizit vom Parser erkannten Werte. Sie füllen nur fehlende Felder und hängen Listen wie Ausstattung/Risiko-Hinweise dedupliziert an.
+
+Konfiguration:
+
+```yaml
+ai_enrichment:
+  enabled: true
+  provider: "your_module:YourVisionProvider"
+  max_images: 8
+```
+
+Alternativ per CLI:
+
+```bash
+.venv/bin/python -m corvette_tracker.cli run \
+  --config config.yaml \
+  --ai-provider "your_module:YourVisionProvider" \
+  --ai-max-images 8
+```
+
+Ein Provider-Template liegt unter:
+
+```text
+examples/ai_provider_template.py
+```
+
+Die Website und Markdown-Ausgabe zeigen AI-Ausstattung, visuelle Hinweise und AI-Notizen sichtbar an. Der JSON-Export enthält zusätzlich `ai_enrichment` mit Provider, Confidence, Notes und Evidence.
 
 ## Risiko-Flags
 
@@ -236,7 +338,9 @@ rtk git status --short --branch || git status --short --branch
 
 ## Bekannte Grenzen
 
-- mobile.de blockt Server-/CI-IP-Ranges häufig mit HTTP 403.
+- AutoUncle und mobile.de können Server-/CI-IP-Ranges zeitweise mit HTTP 403 blockieren; der Tracker behandelt das als Quellen-Warnung und nutzt die übrigen Quellen weiter.
+- Classic Trader hat für C6 aktuell oft keine Treffer; der Connector ist trotzdem aktiv, damit Angebote auftauchen, sobald dort welche vorhanden sind.
+- C7/C8-False-Positives werden herausgefiltert: `Z06`, `ZR1` und `Grand Sport` reichen alleine nicht als C6-Beleg, weil diese Begriffe über mehrere Generationen vorkommen.
 - Extraktion ist best-effort; Inseratstexte sind unstrukturiert und teils widersprüchlich.
 - Herkunft, Unfallstatus und Motor-Ableitungen sind heuristisch, wenn sie nicht explizit im Inserat stehen.
 - Keine kostenpflichtigen Historien-/VIN-Datenquellen angebunden.
@@ -248,7 +352,10 @@ rtk git status --short --branch || git status --short --branch
 corvetteTracker/
   config.example.yaml
   database/schema.dbml
+  examples/
+    ai_provider_template.py
   src/corvette_tracker/
+    ai_enrichment.py
     cli.py
     dedupe.py
     feed.py
@@ -258,6 +365,8 @@ corvetteTracker/
     storage.py
     sources/
       autoscout24.py
+      autouncle.py
+      classic_trader.py
       kleinanzeigen.py
       mobile_de.py
   tests/

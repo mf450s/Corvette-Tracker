@@ -1,0 +1,15 @@
+services:
+  corvette-tracker:
+    build: .
+    image: corvette-tracker:local
+    ports:
+      - "8096:8096"
+    environment:
+      CORVETTE_TRACKER_CRON_INTERVAL: "6h"
+      CORVETTE_TRACKER_RUN_ON_START: "true"
+    volumes:
+      - corvette-tracker-data:/app/runtime
+      - ./config.yaml:/app/config.yaml:ro
+
+volumes:
+  corvette-tracker-data:

@@ -1,5 +1,8 @@
+from corvette_tracker.sources.autouncle import parse_autouncle_search
 from corvette_tracker.sources.autoscout24 import normalize_autoscout24_image_url, parse_autoscout24_search
+from corvette_tracker.sources.classic_trader import parse_classic_trader_search
 from corvette_tracker.sources.kleinanzeigen import (
+    fetch_kleinanzeigen,
     normalize_kleinanzeigen_image_url,
     parse_kleinanzeigen_detail_images,
     parse_kleinanzeigen_search,
@@ -24,11 +27,56 @@ KLEINANZEIGEN_HTML = '''
   <h2><a class="ellipsis" href="/s-anzeige/corvette-c6-grand-sport/77-216-1234">Chevrolet Corvette C6 Grand Sport LS3</a></h2>
   <img src="https://img.example/ka.jpg" />
   <p class="aditem-main--middle--price-shipping--price">54.900 €</p>
-  <p class="aditem-main--middle--description">68.000 km EZ 05/2011 HU 06/2027</p>
+  <p class="aditem-main--middle--description">68.000 km EZ 05/2011 HU 06/2027 Getriebe Manuell</p>
   <div class="aditem-main--top--left">Hamburg</div>
 </article>
 </body></html>
 '''
+
+AUTOUNCLE_HTML = '''
+<html><body>
+<a href="/de/d/222-c6-corvette">
+  Gebraucht (2008) Chevrolet Corvette C6 LS3 437 PS | Seltenes Fahrzeug
+  Mär 2008 68.000 km 6.2L Benzin Coupé Schaltgetriebe 437 PS (321 kW)
+  Details 54.900 € München
+</a>
+<img src="https://autouncle-public.s3.eu-west-1.amazonaws.com/de/car_images/c6.webp" />
+</body></html>
+'''
+
+CLASSIC_TRADER_HTML = '''
+<html><body>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"ItemList","itemListElement":[{"@type":"ListItem","item":{"@type":"Vehicle","name":"Chevrolet Corvette C6 Z06 LS7","url":"/de/automobile/inserat/chevrolet/corvette/c6-z06/2008/123","image":"https://cdn.classic-trader.com/I/images/640_480/c6.jpg","offers":{"price":"69900","priceCurrency":"EUR"},"description":"EZ 05/2008, 72.000 km, 512 PS, Schaltgetriebe"}}]}
+</script>
+</body></html>
+'''
+
+
+def test_parse_autouncle_search_extracts_normalized_c6_listings():
+    listings = parse_autouncle_search(AUTOUNCLE_HTML, "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6")
+
+    assert len(listings) == 1
+    listing = listings[0]
+    assert listing.source == "AutoUncle"
+    assert listing.url == "https://www.autouncle.de/de/d/222-c6-corvette"
+    assert listing.price_eur == 54900
+    assert listing.mileage_km == 68000
+    assert listing.engine == "LS3"
+    assert listing.image_urls == ["https://autouncle-public.s3.eu-west-1.amazonaws.com/de/car_images/c6.webp"]
+
+
+def test_parse_classic_trader_search_extracts_json_ld_listings():
+    listings = parse_classic_trader_search(CLASSIC_TRADER_HTML, "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette/c6")
+
+    assert len(listings) == 1
+    listing = listings[0]
+    assert listing.source == "Classic Trader"
+    assert listing.url == "https://www.classic-trader.com/de/automobile/inserat/chevrolet/corvette/c6-z06/2008/123"
+    assert listing.price_eur == 69900
+    assert listing.mileage_km == 72000
+    assert listing.engine == "LS7"
+    assert listing.image_urls == ["https://cdn.classic-trader.com/I/images/640_480/c6.jpg"]
 
 
 def test_parse_autoscout24_search_extracts_normalized_listings():
@@ -84,6 +132,34 @@ def test_parse_kleinanzeigen_search_extracts_normalized_listings():
     assert listing.price_eur == 54900
     assert listing.location_raw == "Hamburg"
     assert listing.image_urls == ["https://img.example/ka.jpg"]
+    assert listing.transmission == "manual"
+
+
+def test_fetch_kleinanzeigen_fills_missing_transmission_from_detail_page(monkeypatch):
+    search_html = KLEINANZEIGEN_HTML.replace(" Getriebe Manuell", "")
+    detail_html = '''
+    <html><body>
+      <dl>
+        <dt>Getriebe</dt><dd>Manuell</dd>
+      </dl>
+      <img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/82/detail?rule=$_2.AUTO" />
+    </body></html>
+    '''
+
+    def fake_fetch_html(url):
+        if "/s-anzeige/" in url:
+            return detail_html
+        return search_html
+
+    monkeypatch.setattr("corvette_tracker.sources.kleinanzeigen.fetch_html", fake_fetch_html)
+
+    listings = fetch_kleinanzeigen("https://www.kleinanzeigen.de/s-autos/chevrolet-corvette-c6/k0c216")
+
+    assert len(listings) == 1
+    assert listings[0].transmission == "manual"
+    assert listings[0].image_urls == [
+        "https://img.kleinanzeigen.de/api/v1/prod-ads/images/82/detail?rule=$_59.AUTO"
+    ]
 
 
 def test_normalize_kleinanzeigen_image_url_prefers_detail_gallery_variant():

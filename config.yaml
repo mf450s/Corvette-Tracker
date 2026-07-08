@@ -19,10 +19,6 @@ database_path: "data/corvette_tracker.sqlite"
 
 ai_enrichment:
   enabled: false
-  # Optional: dotted provider path loaded as `module:ClassName`.
-  # The class must implement analyze_listing(EnrichmentInput) -> EnrichmentResult.
-  # Example after copying/adapting examples/ai_provider_template.py:
-  # provider: "examples.ai_provider_template:ExampleVisionProvider"
   provider: null
   max_images: 8
 

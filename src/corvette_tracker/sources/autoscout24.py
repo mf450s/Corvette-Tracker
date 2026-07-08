@@ -11,7 +11,7 @@ from ..models import Listing
 from ..normalize import normalize_listing
 
 SOURCE = "AutoScout24"
-DEFAULT_URL = "https://www.autoscout24.de/lst/chevrolet/corvette?atype=C&cy=D&desc=0&fregfrom=2005&fregto=2013&sort=standard&ustate=N%2CU"
+DEFAULT_URL = "https://www.autoscout24.de/lst?cat=ma16380mo19141%2Cma16380mo19140%2Cma16380mo20782%2Cma16380mo75462%2Cma16380mo19142%2Cma16380mo19143&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=0&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU&atype=C&search_id=2br0c23sd5i"
 HIGH_RES_IMAGE_VARIANT = "1920x1080.webp"
 
 
