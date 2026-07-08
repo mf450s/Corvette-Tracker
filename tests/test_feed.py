@@ -40,6 +40,9 @@ def test_build_feed_payload_sorts_by_score_and_counts_summary():
     assert payload["summary"]["total_active"] == 2
     assert payload["summary"]["new_listings"] == 2
     assert payload["summary"]["risk_warnings"] == 1
+    assert payload["summary"]["avg_price_eur"] == 54900
+    assert payload["summary"]["median_price_eur"] == 54900
+    assert payload["summary"]["sources"] == [{"label": "AutoScout24", "count": 2}]
     assert payload["listings"][0]["score"] == 95
 
 
@@ -74,7 +77,12 @@ def test_render_html_site_contains_cards_filters_and_required_vehicle_fields():
     assert "Corvette Tracker" in html
     assert "data-listing-card" in html
     assert "https://example.test/corvette.jpg" in html
-    assert "filter-pill" in html
+    assert "Grand Sport" in html
+    assert "data-dashboard-config" in html
+    assert "Ansicht konfigurieren" in html
+    assert "Details ansehen" in html
+    assert "source-filter" in html
+    assert "sort-order" in html
     for label, value in [
         ("Motor", "LS3"),
         ("PS", "437 PS"),
