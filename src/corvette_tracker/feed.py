@@ -14,8 +14,24 @@ def format_eur(value: int | None) -> str:
     return "k.A." if value is None else f"{value:,}".replace(",", ".") + " €"
 
 
+def price_display(item: dict[str, Any]) -> str:
+    label = item.get("price_label")
+    if item.get("price_eur") is not None:
+        value = format_eur(item.get("price_eur"))
+        return f"{value} {label}" if label else value
+    return str(label or "k.A.")
+
+
 def format_km(value: int | None) -> str:
     return "k.A." if value is None else f"{value:,}".replace(",", ".") + " km"
+
+
+def power_display(item: dict[str, Any]) -> str:
+    if item.get("power_hp") is not None:
+        return f"{item['power_hp']} PS"
+    if item.get("estimated_power_hp") is not None:
+        return f"ca. {item['estimated_power_hp']} PS"
+    return "k.A."
 
 
 def engine_display(item: dict[str, Any]) -> str:
@@ -33,6 +49,38 @@ def engine_note_display(item: dict[str, Any]) -> str | None:
     if not note or item.get("engine"):
         return None
     return str(note)
+
+
+def variant_display(item: dict[str, Any]) -> str:
+    trim = item.get("trim")
+    body_style = item.get("body_style")
+    if trim and trim != "Base" and body_style:
+        return f"{trim} {body_style}"
+    if trim and trim != "Base":
+        return str(trim)
+    if body_style:
+        return f"C6 {body_style}"
+    return str(trim or "k.A.")
+
+
+def transmission_display(item: dict[str, Any]) -> str:
+    value = item.get("transmission")
+    if value == "manual":
+        return "Schalter"
+    if value == "automatic":
+        return "Automatik"
+    return str(value or "k.A.")
+
+
+def ai_summary_display(item: dict[str, Any]) -> str | None:
+    enrichment = item.get("ai_enrichment") or {}
+    if not enrichment:
+        return None
+    provider = enrichment.get("provider") or "AI"
+    confidence = enrichment.get("confidence")
+    confidence_text = f" ({confidence:.0%})" if isinstance(confidence, int | float) else ""
+    notes = enrichment.get("notes")
+    return f"{provider}{confidence_text}: {notes}" if notes else f"{provider}{confidence_text}"
 
 
 def render_gallery(images: list[str], title: str) -> str:
@@ -70,7 +118,7 @@ def render_markdown_feed(payload: dict[str, Any]) -> str:
     ]
     for index, item in enumerate(payload["listings"], start=1):
         lines += [
-            f"## {index}. {item['title']} — {format_eur(item.get('price_eur'))}",
+            f"## {index}. {item['title']} — {price_display(item)}",
             "",
         ]
         if item.get("image_urls"):
@@ -79,10 +127,26 @@ def render_markdown_feed(payload: dict[str, Any]) -> str:
         lines += [
             f"- Quelle: {item['source']}",
             f"- Score: {item['score']}/100",
-            f"- Variante/Motor: {item.get('trim') or 'k.A.'} / {engine_display(item)}",
+            f"- Variante/Motor: {variant_display(item)} / {engine_display(item)}",
+            f"- PS: {power_display(item)}",
+            f"- Getriebe: {transmission_display(item)}",
+            f"- Karosserie: {item.get('body_style') or 'k.A.'}",
         ]
         if engine_note:
             lines.append(f"- Motor-Hinweis: {engine_note}")
+        if item.get("power_note"):
+            lines.append(f"- PS-Hinweis: {item['power_note']}")
+        if item.get("inference_notes"):
+            lines.append(f"- Vermutungen: {', '.join(item.get('inference_notes') or [])}")
+        if item.get("conflict_flags"):
+            lines.append(f"- Konflikte: {', '.join(item.get('conflict_flags') or [])}")
+        if item.get("equipment"):
+            lines.append(f"- Ausstattung (AI): {', '.join(item.get('equipment') or [])}")
+        if item.get("visual_flags"):
+            lines.append(f"- Visuelle Hinweise (AI): {', '.join(item.get('visual_flags') or [])}")
+        ai_summary = ai_summary_display(item)
+        if ai_summary:
+            lines.append(f"- AI-Auswertung: {ai_summary}")
         lines += [
             f"- Kilometer: {format_km(item.get('mileage_km'))}",
             f"- EZ: {item.get('first_registration') or 'k.A.'}",
@@ -111,6 +175,22 @@ def render_html_site(payload: dict[str, Any]) -> str:
         engine_text = html.escape(engine_display(item))
         engine_note = engine_note_display(item)
         engine_note_html = f'<p class="engine-note">{html.escape(engine_note)}</p>' if engine_note else ""
+        equipment_html = ""
+        if item.get("equipment"):
+            equipment_html = f'<p class="ai-line"><strong>Ausstattung (AI):</strong> {html.escape(", ".join(item.get("equipment") or []))}</p>'
+        visual_flags_html = ""
+        if item.get("visual_flags"):
+            visual_flags_html = f'<p class="ai-line"><strong>Visuelle Hinweise:</strong> {html.escape(", ".join(item.get("visual_flags") or []))}</p>'
+        ai_summary = ai_summary_display(item)
+        ai_html = f'<p class="ai-line"><strong>AI-Auswertung:</strong> {html.escape(ai_summary)}</p>' if ai_summary else ""
+        inference_html = ""
+        if item.get("inference_notes"):
+            inference_items = "".join(f"<li>{html.escape(str(note))}</li>" for note in item.get("inference_notes") or [])
+            inference_html = f'<div class="inference-line"><strong>Vermutungen</strong><ul>{inference_items}</ul></div>'
+        conflict_html = ""
+        if item.get("conflict_flags"):
+            conflict_items = "".join(f"<li>{html.escape(str(flag))}</li>" for flag in item.get("conflict_flags") or [])
+            conflict_html = f'<div class="conflict-line"><strong>Konflikte</strong><ul>{conflict_items}</ul></div>'
         cards.append(f'''
         <article class="card" data-listing-card data-trim="{html.escape(str(item.get('trim') or 'unknown'))}" data-risk="{'yes' if item.get('risk_flags') else 'no'}">
           <a class="image" href="{html.escape(item['url'])}" target="_blank" rel="noreferrer">{img_html}</a>
@@ -118,16 +198,25 @@ def render_html_site(payload: dict[str, Any]) -> str:
           <div class="card-body">
             <div class="meta"><span>{html.escape(item['source'])}</span><span>Score {item['score']}/100</span></div>
             <h2>{title}</h2>
-            <p class="price">{format_eur(item.get('price_eur'))}</p>
+            <p class="price">{html.escape(price_display(item))}</p>
             <dl>
-              <div><dt>km</dt><dd>{format_km(item.get('mileage_km'))}</dd></div>
               <div><dt>Motor</dt><dd>{engine_text}</dd></div>
-              <div><dt>Variante</dt><dd>{html.escape(str(item.get('trim') or 'k.A.'))}</dd></div>
+              <div><dt>PS</dt><dd>{html.escape(power_display(item))}</dd></div>
+              <div><dt>km</dt><dd>{format_km(item.get('mileage_km'))}</dd></div>
+              <div><dt>Variante</dt><dd>{html.escape(variant_display(item))}</dd></div>
+              <div><dt>Getriebe</dt><dd>{html.escape(transmission_display(item))}</dd></div>
+              <div><dt>Karosserie</dt><dd>{html.escape(str(item.get('body_style') or 'k.A.'))}</dd></div>
+              <div><dt>Ort</dt><dd>{html.escape(str(item.get('location_raw') or 'k.A.'))}</dd></div>
               <div><dt>EZ</dt><dd>{html.escape(str(item.get('first_registration') or 'k.A.'))}</dd></div>
               <div><dt>TÜV</dt><dd>{html.escape(str(item.get('tuv_until') or 'k.A.'))}</dd></div>
-              <div><dt>Ort</dt><dd>{html.escape(str(item.get('location_raw') or 'k.A.'))}</dd></div>
             </dl>
             {engine_note_html}
+            {f'<p class="engine-note">{html.escape(str(item.get("power_note")))}</p>' if item.get("power_note") else ""}
+            {equipment_html}
+            {visual_flags_html}
+            {ai_html}
+            {inference_html}
+            {conflict_html}
             <p class="risk">Risiko: {html.escape(risk)}</p>
             <a class="button" href="{html.escape(item['url'])}" target="_blank" rel="noreferrer">Angebot öffnen</a>
           </div>
@@ -162,7 +251,7 @@ def render_html_site(payload: dict[str, Any]) -> str:
     .gallery {{ border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:rgba(0,0,0,.18); padding:10px 12px; }} .gallery-count {{ color:var(--muted); font-size:12px; margin-bottom:8px; }} .gallery-strip {{ display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; scrollbar-width:thin; }} .gallery-strip a {{ flex:0 0 64px; width:64px; height:48px; border-radius:10px; overflow:hidden; border:1px solid var(--line); background:#18181b; }} .gallery-strip img {{ width:100%; height:100%; object-fit:cover; display:block; }}
     .card-body {{ padding:20px; }} .meta {{ display:flex; justify-content:space-between; color:var(--muted); font-size:13px; gap:12px; }} h2 {{ font-size:21px; line-height:1.15; margin:12px 0; letter-spacing:-.03em; }} .price {{ font-size:30px; font-weight:800; margin:0 0 16px; color:white; }}
     dl {{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin:0 0 14px; }} dl div {{ border:1px solid var(--line); border-radius:14px; padding:10px; background:rgba(0,0,0,.15); }} dt {{ color:var(--muted); font-size:12px; }} dd {{ margin:3px 0 0; font-weight:700; }}
-    .engine-note {{ color:var(--accent2); font-size:13px; margin:0 0 10px; }} .risk {{ color:var(--muted); min-height:1.5em; }} .button {{ display:inline-flex; text-decoration:none; color:white; background:var(--accent); padding:11px 14px; border-radius:12px; font-weight:700; }} .empty {{ color:var(--muted); grid-column:1/-1; }}
+    .engine-note,.ai-line,.inference-line,.conflict-line {{ color:var(--accent2); font-size:13px; margin:0 0 10px; }} .ai-line {{ color:#d4d4d8; }} .ai-line strong,.inference-line strong,.conflict-line strong {{ color:var(--accent2); }} .inference-line ul,.conflict-line ul {{ margin:6px 0 0; padding-left:18px; color:#d4d4d8; }} .conflict-line strong {{ color:#fecaca; }} .risk {{ color:var(--muted); min-height:1.5em; }} .button {{ display:inline-flex; text-decoration:none; color:white; background:var(--accent); padding:11px 14px; border-radius:12px; font-weight:700; }} .empty {{ color:var(--muted); grid-column:1/-1; }}
     .warnings {{ max-width:1180px; margin:0 auto 18px; padding:0 20px; color:#fecaca; }} .warnings h2 {{ font-size:18px; margin:0 0 8px; }} .warnings ul {{ border:1px solid #7f1d1d; border-radius:16px; padding:14px 18px 14px 34px; background:rgba(127,29,29,.25); }}
     footer {{ max-width:1180px; margin:0 auto; padding:0 20px 34px; color:var(--muted); }}
   </style>
@@ -194,7 +283,7 @@ def write_exports(payload: dict[str, Any], output_dir: str | Path) -> None:
     (feed_dir / "latest.md").write_text(render_markdown_feed(payload), encoding="utf-8")
     (export_dir / "latest.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     with (export_dir / "latest.csv").open("w", newline="", encoding="utf-8") as handle:
-        fieldnames = ["id", "source", "title", "price_eur", "mileage_km", "trim", "engine", "location_raw", "score", "change_type", "url"]
+        fieldnames = ["id", "source", "title", "price_eur", "price_label", "mileage_km", "trim", "engine", "power_hp", "estimated_power_hp", "power_note", "transmission", "body_style", "inference_notes", "conflict_flags", "location_raw", "score", "change_type", "url"]
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for item in payload["listings"]:

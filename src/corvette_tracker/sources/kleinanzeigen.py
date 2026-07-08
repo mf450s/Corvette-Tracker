@@ -7,10 +7,10 @@ from bs4 import BeautifulSoup
 
 from ..http import fetch_html
 from ..models import Listing
-from ..normalize import normalize_listing
+from ..normalize import extract_transmission, normalize_listing
 
 SOURCE = "Kleinanzeigen"
-DEFAULT_URL = "https://www.kleinanzeigen.de/s-autos/chevrolet-corvette-c6/k0c216"
+DEFAULT_URL = "https://www.kleinanzeigen.de/s-autos/corvette-c6/k0c216"
 DETAIL_IMAGE_RULE = "$_59.AUTO"
 
 
@@ -61,6 +61,11 @@ def parse_kleinanzeigen_detail_images(html: str, base_url: str) -> list[str]:
     return normalized
 
 
+def parse_kleinanzeigen_detail_text(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    return _text(soup)
+
+
 def parse_kleinanzeigen_search(html: str, base_url: str = DEFAULT_URL) -> list[Listing]:
     soup = BeautifulSoup(html, "html.parser")
     articles = soup.select("article.aditem") or soup.select("article") or soup.select("li.ad-listitem")
@@ -100,9 +105,14 @@ def fetch_kleinanzeigen(url: str = DEFAULT_URL) -> list[Listing]:
     listings = parse_kleinanzeigen_search(fetch_html(url), url)
     for listing in listings:
         try:
-            detail_images = parse_kleinanzeigen_detail_images(fetch_html(listing.url), listing.url)
+            detail_html = fetch_html(listing.url)
+            detail_images = parse_kleinanzeigen_detail_images(detail_html, listing.url)
+            detail_text = parse_kleinanzeigen_detail_text(detail_html)
         except Exception:
             detail_images = []
+            detail_text = ""
         if detail_images:
             listing.image_urls = detail_images
+        if not listing.transmission:
+            listing.transmission = extract_transmission(detail_text)
     return listings
