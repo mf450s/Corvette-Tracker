@@ -235,6 +235,86 @@ def test_fetch_kleinanzeigen_fills_missing_transmission_from_detail_page(monkeyp
     ]
 
 
+def test_fetch_kleinanzeigen_prefers_detail_facts_over_snippet_noise(monkeypatch):
+    search_html = '''
+    <html><body>
+      <article class="aditem" data-adid="3445036633" data-href="/s-anzeige/corvette-c6-grand-sport-60-jahre-edition/3445036633-216-2394">
+        <h2><a href="/s-anzeige/corvette-c6-grand-sport-60-jahre-edition/3445036633-216-2394">Corvette c6 Grand Sport 60 Jahre Edition</a></h2>
+        <p class="aditem-main--middle--description">Vor 2 Jahren Bremse komplett gewechselt und Batterie ca 5000 km gefahren in der Zeit.</p>
+        <p class="aditem-main--middle--price-shipping--price">VB</p>
+        <p>46.000 km EZ 11/2012</p>
+      </article>
+    </body></html>
+    '''
+    detail_html = '''
+    <html><body>
+      <h1>Corvette c6 Grand Sport 60 Jahre Edition</h1>
+      <h2 id="viewad-price">VB</h2>
+      <li class="addetailslist--detail"><span>Marke</span><span>Corvette</span></li>
+      <li class="addetailslist--detail"><span>Modell</span><span>C6</span></li>
+      <li class="addetailslist--detail"><span>Kilometerstand</span><span>46.000 km</span></li>
+      <li class="addetailslist--detail"><span>Erstzulassung</span><span>November 2012</span></li>
+      <li class="addetailslist--detail"><span>Getriebe</span><span>Automatik</span></li>
+    </body></html>
+    '''
+
+    def fake_fetch_html(url):
+        if "/s-anzeige/" in url:
+            return detail_html
+        return search_html
+
+    monkeypatch.setattr("corvette_tracker.sources.kleinanzeigen.fetch_html", fake_fetch_html)
+
+    listing = fetch_kleinanzeigen("https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216")[0]
+
+    assert listing.price_eur is None
+    assert listing.price_label == "VB"
+    assert listing.mileage_km == 46000
+    assert listing.transmission == "automatic"
+
+
+def test_fetch_kleinanzeigen_extracts_price_mileage_and_power_from_detail_facts(monkeypatch):
+    search_html = '''
+    <html><body>
+      <article class="aditem" data-adid="3406308683" data-href="/s-anzeige/corvette-c6-cabrio-bj-2009/3406308683-216-3512">
+        <h2><a href="/s-anzeige/corvette-c6-cabrio-bj-2009/3406308683-216-3512">Corvette C6 Cabrio Bj.2009</a></h2>
+        <p class="aditem-main--middle--description">Erstzulassung 08.2010, in unserem Besitz seit 09.2011 Km-Stand 123.000, TÜV 09.2027</p>
+        <p class="aditem-main--middle--price-shipping--price">35.000 € VB</p>
+        <p>123.000 km EZ 08/2010</p>
+      </article>
+    </body></html>
+    '''
+    detail_html = '''
+    <html><body>
+      <h1>Corvette C6 Cabrio Bj.2009</h1>
+      <h2 id="viewad-price">35.000 € VB</h2>
+      <li class="addetailslist--detail"><span>Marke</span><span>Corvette</span></li>
+      <li class="addetailslist--detail"><span>Modell</span><span>C6</span></li>
+      <li class="addetailslist--detail"><span>Kilometerstand</span><span>123.000 km</span></li>
+      <li class="addetailslist--detail"><span>Leistung</span><span>436 PS</span></li>
+      <li class="addetailslist--detail"><span>Getriebe</span><span>Automatik</span></li>
+      <li class="addetailslist--detail"><span>Fahrzeugtyp</span><span>Cabrio</span></li>
+    </body></html>
+    '''
+
+    def fake_fetch_html(url):
+        if "/s-anzeige/" in url:
+            return detail_html
+        return search_html
+
+    monkeypatch.setattr("corvette_tracker.sources.kleinanzeigen.fetch_html", fake_fetch_html)
+
+    listing = fetch_kleinanzeigen("https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216")[0]
+
+    assert listing.price_eur == 35000
+    assert listing.price_label == "VB"
+    assert listing.mileage_km == 123000
+    assert listing.power_hp == 436
+    assert listing.probable_engine == "LS3"
+    assert listing.transmission == "automatic"
+    assert listing.body_style == "Cabrio"
+
+
 def test_fetch_kleinanzeigen_follows_pagination_and_dedupes(monkeypatch):
     first_page = '''
     <html><body>

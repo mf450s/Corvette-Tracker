@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from ..http import fetch_html
 from ..models import Listing
 from ..normalize import extract_transmission, normalize_listing
+from ..scoring import apply_score
 
 SOURCE = "Kleinanzeigen"
 DEFAULT_URL = "https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216"
@@ -65,6 +66,127 @@ def parse_kleinanzeigen_detail_images(html: str, base_url: str) -> list[str]:
 def parse_kleinanzeigen_detail_text(html_text: str) -> str:
     soup = BeautifulSoup(html_text, "html.parser")
     return _text(soup)
+
+
+def _detail_price_text(soup: BeautifulSoup) -> str:
+    price_node = soup.select_one("#viewad-price, [id*=viewad-price]")
+    if price_node:
+        return _text(price_node)
+    for node in soup.select('[class*="price"]'):
+        text = _text(node)
+        if re.search(r"(?:\d[\d.\s]*\s*€|\bVB\b|Verhandlungsbasis|auf Anfrage)", text, re.I):
+            return text
+    return ""
+
+
+def _split_detail_label_value(node) -> tuple[str, str] | None:
+    parts = [_text(child) for child in node.find_all(recursive=False)]
+    parts = [part for part in parts if part]
+    if len(parts) >= 2:
+        return parts[0], " ".join(parts[1:])
+
+    text = _text(node)
+    for label in (
+        "Kilometerstand",
+        "Fahrzeugzustand",
+        "Erstzulassung",
+        "Kraftstoffart",
+        "Leistung",
+        "Getriebe",
+        "Fahrzeugtyp",
+        "HU bis",
+        "Marke",
+        "Modell",
+    ):
+        if text.lower().startswith(label.lower()):
+            value = text[len(label):].strip()
+            if value:
+                return label, value
+    return None
+
+
+def _detail_facts_text(soup: BeautifulSoup) -> str:
+    facts: list[str] = []
+    seen: set[tuple[str, str]] = set()
+
+    for detail in soup.select(".addetailslist--detail"):
+        split = _split_detail_label_value(detail)
+        if not split:
+            continue
+        label, value = split
+        key = (label.lower(), value.lower())
+        if key not in seen:
+            seen.add(key)
+            facts.append(f"{label} {value}")
+
+    for term in soup.select("dt"):
+        value_node = term.find_next_sibling("dd")
+        if not value_node:
+            continue
+        label = _text(term)
+        value = _text(value_node)
+        if not label or not value:
+            continue
+        key = (label.lower(), value.lower())
+        if key not in seen:
+            seen.add(key)
+            facts.append(f"{label} {value}")
+
+    return " ".join(facts)
+
+
+def _merge_detail_facts(listing: Listing, detail_html: str) -> Listing:
+    soup = BeautifulSoup(detail_html, "html.parser")
+    price_text = _detail_price_text(soup)
+    facts_text = _detail_facts_text(soup)
+    if not price_text and not facts_text:
+        return listing
+
+    detail_listing = normalize_listing(
+        source=listing.source,
+        source_listing_id=listing.source_listing_id,
+        url=listing.url,
+        title=listing.title,
+        description=facts_text,
+        price_text=price_text,
+        location_raw=listing.location_raw,
+        image_urls=listing.image_urls,
+    )
+    if detail_listing is None:
+        return listing
+
+    for field in (
+        "price_eur",
+        "price_label",
+        "mileage_km",
+        "engine",
+        "probable_engine",
+        "engine_confidence",
+        "engine_note",
+        "power_hp",
+        "estimated_power_hp",
+        "power_note",
+        "trim",
+        "first_registration",
+        "tuv_until",
+        "transmission",
+        "body_style",
+        "accident_status",
+        "damage",
+        "has_damage",
+        "origin_country",
+        "origin_confidence",
+        "vin",
+    ):
+        value = getattr(detail_listing, field)
+        if value is not None:
+            setattr(listing, field, value)
+
+    listing.model = detail_listing.model or listing.model
+    listing.risk_flags = list(dict.fromkeys([*listing.risk_flags, *detail_listing.risk_flags]))
+    listing.inference_notes = list(dict.fromkeys([*listing.inference_notes, *detail_listing.inference_notes]))
+    listing.conflict_flags = list(dict.fromkeys([*listing.conflict_flags, *detail_listing.conflict_flags]))
+    return apply_score(listing)
 
 
 def _listing_id_from_url(url: str, fallback: str) -> str:
@@ -188,10 +310,12 @@ def fetch_kleinanzeigen(url: str = DEFAULT_URL) -> list[Listing]:
             detail_images = parse_kleinanzeigen_detail_images(detail_html, listing.url)
             detail_text = parse_kleinanzeigen_detail_text(detail_html)
         except Exception:
+            detail_html = ""
             detail_images = []
             detail_text = ""
         if detail_images:
             listing.image_urls = detail_images
+        listing = _merge_detail_facts(listing, detail_html) if detail_text else listing
         if not listing.transmission:
             listing.transmission = extract_transmission(detail_text)
     return listings
