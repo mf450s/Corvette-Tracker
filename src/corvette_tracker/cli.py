@@ -23,10 +23,10 @@ from .storage import TrackerStore
 
 DEFAULT_CONFIG = {
     "sources": {
-        "autoscout24": {"enabled": True, "url": AS24_URL},
-        "kleinanzeigen": {"enabled": True, "url": KA_URL},
-        "autouncle": {"enabled": True, "url": AUTOUNCLE_URL},
-        "classic_trader": {"enabled": True, "url": CLASSIC_TRADER_URL},
+        "autoscout24": {"enabled": True, "url": AS24_URL, "urls": [AS24_URL, "https://www.autoscout24.de/lst?cat=ma16380mo19141%2Cma16380mo19140%2Cma16380mo20782%2Cma16380mo75462%2Cma16380mo19142%2Cma16380mo19143&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=0&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU&atype=C"]},
+        "kleinanzeigen": {"enabled": True, "url": KA_URL, "urls": [KA_URL, "https://www.kleinanzeigen.de/s-autos/corvette-c6/k0c216"]},
+        "autouncle": {"enabled": True, "url": AUTOUNCLE_URL, "urls": [AUTOUNCLE_URL, "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6"]},
+        "classic_trader": {"enabled": True, "url": CLASSIC_TRADER_URL, "urls": [CLASSIC_TRADER_URL, "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette/c6"]},
         "mobile_de": {"enabled": True, "url": MOBILE_URL},
     },
     "output_dir": ".",
@@ -82,35 +82,53 @@ def _copy_site_to_root(output_dir: Path) -> None:
         shutil.copyfile(source, output_dir / "index.html")
 
 
+def _source_urls(source_config: dict, default_url: str) -> list[str]:
+    raw_urls = source_config.get("urls")
+    if isinstance(raw_urls, list):
+        urls = [str(url).strip() for url in raw_urls if str(url or "").strip()]
+    else:
+        urls = []
+    primary = str(source_config.get("url") or "").strip()
+    if primary:
+        urls.insert(0, primary)
+    return list(dict.fromkeys(urls or [default_url]))
+
+
+def _fetch_source(fetcher, source_name: str, source_config: dict, default_url: str) -> tuple[list[Listing], list[str]]:
+    listings: list[Listing] = []
+    warnings: list[str] = []
+    for url in _source_urls(source_config, default_url):
+        try:
+            listings.extend(fetcher(url))
+        except Exception as exc:
+            warnings.append(f"{source_name} ({url}): {exc}")
+    return listings, warnings
+
+
 def collect_live(config: dict) -> tuple[list[Listing], list[str]]:
     listings: list[Listing] = []
     warnings: list[str] = []
     sources = config.get("sources", {})
     if sources.get("autoscout24", {}).get("enabled", True):
-        try:
-            listings.extend(fetch_autoscout24(sources.get("autoscout24", {}).get("url", AS24_URL)))
-        except Exception as exc:  # keep one blocked source from killing all exports
-            warnings.append(f"AutoScout24: {exc}")
+        fetched, source_warnings = _fetch_source(fetch_autoscout24, "AutoScout24", sources.get("autoscout24", {}), AS24_URL)
+        listings.extend(fetched)
+        warnings.extend(source_warnings)
     if sources.get("kleinanzeigen", {}).get("enabled", True):
-        try:
-            listings.extend(fetch_kleinanzeigen(sources.get("kleinanzeigen", {}).get("url", KA_URL)))
-        except Exception as exc:
-            warnings.append(f"Kleinanzeigen: {exc}")
+        fetched, source_warnings = _fetch_source(fetch_kleinanzeigen, "Kleinanzeigen", sources.get("kleinanzeigen", {}), KA_URL)
+        listings.extend(fetched)
+        warnings.extend(source_warnings)
     if sources.get("autouncle", {}).get("enabled", True):
-        try:
-            listings.extend(fetch_autouncle(sources.get("autouncle", {}).get("url", AUTOUNCLE_URL)))
-        except Exception as exc:
-            warnings.append(f"AutoUncle: {exc}")
+        fetched, source_warnings = _fetch_source(fetch_autouncle, "AutoUncle", sources.get("autouncle", {}), AUTOUNCLE_URL)
+        listings.extend(fetched)
+        warnings.extend(source_warnings)
     if sources.get("classic_trader", {}).get("enabled", True):
-        try:
-            listings.extend(fetch_classic_trader(sources.get("classic_trader", {}).get("url", CLASSIC_TRADER_URL)))
-        except Exception as exc:
-            warnings.append(f"Classic Trader: {exc}")
+        fetched, source_warnings = _fetch_source(fetch_classic_trader, "Classic Trader", sources.get("classic_trader", {}), CLASSIC_TRADER_URL)
+        listings.extend(fetched)
+        warnings.extend(source_warnings)
     if sources.get("mobile_de", {}).get("enabled", True):
-        try:
-            listings.extend(fetch_mobile_de(sources.get("mobile_de", {}).get("url", MOBILE_URL)))
-        except Exception as exc:
-            warnings.append(f"mobile.de: {exc}")
+        fetched, source_warnings = _fetch_source(fetch_mobile_de, "mobile.de", sources.get("mobile_de", {}), MOBILE_URL)
+        listings.extend(fetched)
+        warnings.extend(source_warnings)
     return listings, warnings
 
 

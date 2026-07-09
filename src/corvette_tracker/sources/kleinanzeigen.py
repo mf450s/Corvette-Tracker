@@ -10,7 +10,7 @@ from ..models import Listing
 from ..normalize import extract_transmission, normalize_listing
 
 SOURCE = "Kleinanzeigen"
-DEFAULT_URL = "https://www.kleinanzeigen.de/s-autos/corvette-c6/k0c216"
+DEFAULT_URL = "https://www.kleinanzeigen.de/s-autos/corvette/k0c216"
 DETAIL_IMAGE_RULE = "$_59.AUTO"
 
 

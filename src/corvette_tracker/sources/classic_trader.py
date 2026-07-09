@@ -11,7 +11,7 @@ from ..models import Listing
 from ..normalize import normalize_listing
 
 SOURCE = "Classic Trader"
-DEFAULT_URL = "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette/c6"
+DEFAULT_URL = "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette"
 
 
 def _iter_json_ld_objects(value) -> Iterable[dict]:

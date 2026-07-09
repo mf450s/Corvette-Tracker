@@ -10,7 +10,7 @@ from ..models import Listing
 from ..normalize import normalize_listing
 
 SOURCE = "AutoUncle"
-DEFAULT_URL = "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6"
+DEFAULT_URL = "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette"
 
 
 def _text(node) -> str:
