@@ -1,16 +1,14 @@
 sources:
   autoscout24:
     enabled: true
-    url: "https://www.autoscout24.de/lst/chevrolet/corvette?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=0&fregfrom=2005&fregto=2013&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU"
+    url: "https://www.autoscout24.de/lst?cat=ma16380mo19141%2Cma16380mo19140%2Cma16380mo20782%2Cma16380mo75462%2Cma16380mo21061%2Cma16380mo74838%2Cma16380mo19142%2Cma16380mo19143&cy=D&damaged_listing=exclude&desc=0&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU&atype=C&search_id=nfg3gad0ed&source=homepage_search-mask"
     urls:
-      - "https://www.autoscout24.de/lst/chevrolet/corvette?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=0&fregfrom=2005&fregto=2013&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU"
-      - "https://www.autoscout24.de/lst?cat=ma16380mo19141%2Cma16380mo19140%2Cma16380mo20782%2Cma16380mo75462%2Cma16380mo19142%2Cma16380mo19143&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=0&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU&atype=C"
+      - "https://www.autoscout24.de/lst?cat=ma16380mo19141%2Cma16380mo19140%2Cma16380mo20782%2Cma16380mo75462%2Cma16380mo21061%2Cma16380mo74838%2Cma16380mo19142%2Cma16380mo19143&cy=D&damaged_listing=exclude&desc=0&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU&atype=C&search_id=nfg3gad0ed&source=homepage_search-mask"
   kleinanzeigen:
     enabled: true
-    url: "https://www.kleinanzeigen.de/s-autos/corvette/k0c216"
+    url: "https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216"
     urls:
-      - "https://www.kleinanzeigen.de/s-autos/corvette/k0c216"
-      - "https://www.kleinanzeigen.de/s-autos/corvette-c6/k0c216"
+      - "https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216"
   autouncle:
     enabled: true # can intermittently return HTTP 403; connector reports it as warning.
     url: "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette"

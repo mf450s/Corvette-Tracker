@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -10,7 +10,7 @@ from ..models import Listing
 from ..normalize import extract_transmission, normalize_listing
 
 SOURCE = "Kleinanzeigen"
-DEFAULT_URL = "https://www.kleinanzeigen.de/s-autos/corvette/k0c216"
+DEFAULT_URL = "https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216"
 DETAIL_IMAGE_RULE = "$_59.AUTO"
 
 
@@ -101,8 +101,46 @@ def parse_kleinanzeigen_search(html: str, base_url: str = DEFAULT_URL) -> list[L
     return listings
 
 
+def parse_kleinanzeigen_pagination_urls(html: str, base_url: str) -> list[str]:
+    soup = BeautifulSoup(html, "html.parser")
+    base_host = urlparse(base_url).netloc
+    urls: list[str] = []
+    for link in soup.select('a[href*="/s-autos/"][href*="seite:"]'):
+        href = link.get("href")
+        if not href:
+            continue
+        url = urljoin(base_url, href)
+        parsed = urlparse(url)
+        if parsed.netloc == base_host and "/s-anzeige/" not in parsed.path:
+            urls.append(url)
+    return list(dict.fromkeys(urls))
+
+
+def _dedupe_listings(listings: list[Listing]) -> list[Listing]:
+    deduped: list[Listing] = []
+    seen: set[tuple[str, str]] = set()
+    for listing in listings:
+        key = (listing.source, listing.source_listing_id or listing.url)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(listing)
+    return deduped
+
+
 def fetch_kleinanzeigen(url: str = DEFAULT_URL) -> list[Listing]:
-    listings = parse_kleinanzeigen_search(fetch_html(url), url)
+    html_by_url: dict[str, str] = {url: fetch_html(url)}
+    for page_url in parse_kleinanzeigen_pagination_urls(html_by_url[url], url):
+        try:
+            html_by_url[page_url] = fetch_html(page_url)
+        except Exception:
+            continue
+
+    listings = _dedupe_listings([
+        listing
+        for page_url, html in html_by_url.items()
+        for listing in parse_kleinanzeigen_search(html, page_url)
+    ])
     for listing in listings:
         try:
             detail_html = fetch_html(listing.url)
