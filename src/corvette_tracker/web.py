@@ -251,6 +251,7 @@ def render_app_shell() -> str:
     * {{ box-sizing:border-box; }} body {{ margin:0; font-family:Inter,ui-sans-serif,system-ui,sans-serif; background:var(--bg); color:var(--text); }}
     header,.wrap {{ max-width:1180px; margin:0 auto; padding:24px 20px; }} h1 {{ font-size:42px; letter-spacing:-.04em; margin:0 0 8px; }}
     button,a.button {{ border:0; border-radius:10px; padding:10px 12px; color:white; background:var(--accent); font-weight:700; cursor:pointer; text-decoration:none; }}
+    a.secondary {{ background:#27272a; }} .button-row {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }} .title-link {{ color:var(--text); text-decoration:none; }} .title-link:hover {{ color:white; text-decoration:underline; }}
     .muted {{ color:var(--muted); }} .toolbar {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:18px; }}
     .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:16px; }} .card,.panel {{ border:1px solid var(--line); border-radius:18px; background:var(--card); overflow:hidden; }} .panel {{ padding:16px; margin-bottom:18px; }} .list-toolbar {{ display:flex; justify-content:space-between; align-items:end; gap:12px; flex-wrap:wrap; }}
     .image {{ aspect-ratio:16/9; background:#18181b; display:block; }} .image img {{ width:100%; height:100%; object-fit:cover; }} .body {{ padding:16px; }}
@@ -327,11 +328,12 @@ function overviewSpec(label, value) {{ return `<div><dt>${{esc(label)}}</dt><dd>
 function renderOverviewCard(item) {{
   const image = (item.image_urls || [])[0];
   const detailUrl = '/car/' + encodeURIComponent(item.id);
+  const offerUrl = item.url || detailUrl;
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}">
-    <a class="image" href="${{detailUrl}}" onclick="openDetail(event, '${{esc(item.id)}}')">${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
+    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer">${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
     <div class="body">
       <p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p>
-      <h2>${{esc(item.title)}}</h2>
+      <h2><a class="title-link" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer">${{esc(item.title)}}</a></h2>
       <p class="price">${{fmtEur(item.price_eur)}}</p>
       <dl class="overview-specs">
         ${{overviewSpec('Trim', item.trim || 'k.A.')}}
@@ -341,7 +343,7 @@ function renderOverviewCard(item) {{
         ${{overviewSpec('Karosserie', item.body_style || 'k.A.')}}
         ${{overviewSpec('EZ', item.first_registration || 'k.A.')}}
       </dl>
-      <a class="button" href="${{detailUrl}}" onclick="openDetail(event, '${{esc(item.id)}}')">Details bearbeiten</a>
+      <div class="button-row"><a class="button" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer">Angebot öffnen</a><a class="button secondary" href="${{detailUrl}}" onclick="openDetail(event, '${{esc(item.id)}}')">Details bearbeiten</a></div>
     </div>
   </article>`;
 }}

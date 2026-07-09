@@ -157,11 +157,15 @@ def test_web_shell_exposes_all_listing_fields_and_inline_editors():
         assert f'"{field_name}"' in html
 
 
-def test_web_shell_overview_is_compact_and_links_to_detail_pages():
+def test_web_shell_overview_links_directly_to_original_offer_and_keeps_detail_editing():
     html = render_app_shell()
 
     assert "data-overview-card" in html
+    assert "const offerUrl = item.url || detailUrl" in html
+    assert 'href="${esc(offerUrl)}" target="_blank" rel="noreferrer"' in html
+    assert "Angebot öffnen" in html
     assert "Details bearbeiten" in html
+    assert "openDetail(event" in html
     assert "car/" in html
     assert "overview-specs" in html
     assert "sorted.map(item => renderOverviewCard(item))" in html
