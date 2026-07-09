@@ -70,6 +70,33 @@ class TrackerWebApp:
             (self.output_dir / "index.html").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
         return payload
 
+    def latest_export_payload(self) -> dict[str, Any] | None:
+        path = self.output_dir / "data" / "exports" / "latest.json"
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def last_run_status(self) -> dict[str, Any] | None:
+        if self.last_run:
+            return self.last_run
+        payload = self.latest_export_payload()
+        if not payload or not payload.get("generated_at"):
+            return None
+        return {
+            "generated_at": payload.get("generated_at"),
+            "summary": payload.get("summary", {}),
+            "warnings": payload.get("warnings", []),
+        }
+
+    def last_crawl_at(self) -> str | None:
+        status = self.last_run_status() or {}
+        value = status.get("generated_at")
+        return str(value) if value else None
+
     def scoring_config(self) -> dict[str, Any]:
         if not self.config_path.exists():
             return merge_scoring_config(None)
@@ -108,10 +135,11 @@ class TrackerWebApp:
     def run_once(self) -> tuple[int, dict[str, Any]]:
         if not self.run_callback:
             payload = self.refresh_exports()
+            self.last_run = {"exit_code": 0, "generated_at": payload.get("generated_at"), "summary": payload.get("summary", {}), "warnings": payload.get("warnings", [])}
             return 0, payload
         with self.run_lock:
             exit_code, payload = self.run_callback()
-            self.last_run = {"exit_code": exit_code, "summary": payload.get("summary", {}), "warnings": payload.get("warnings", [])}
+            self.last_run = {"exit_code": exit_code, "generated_at": payload.get("generated_at"), "summary": payload.get("summary", {}), "warnings": payload.get("warnings", [])}
             return exit_code, payload
 
 
@@ -133,7 +161,7 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/listings":
             scoring = self.tracker_app.scoring_config()
             listings = [apply_score(listing, scoring).to_dict() for listing in self.tracker_app.store.list_active()]
-            self._send_json({"listings": listings, "last_run": self.tracker_app.last_run})
+            self._send_json({"listings": listings, "last_run": self.tracker_app.last_run_status(), "last_crawl_at": self.tracker_app.last_crawl_at()})
             return
         history_prefix = "/api/listings/"
         history_suffix = "/history"
@@ -148,7 +176,7 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"scoring": self.tracker_app.scoring_config()})
             return
         if path == "/api/status":
-            self._send_json({"last_run": self.tracker_app.last_run, "total_active": len(self.tracker_app.store.list_active())})
+            self._send_json({"last_run": self.tracker_app.last_run_status(), "last_crawl_at": self.tracker_app.last_crawl_at(), "total_active": len(self.tracker_app.store.list_active())})
             return
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
@@ -157,7 +185,7 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/run":
             exit_code, payload = self.tracker_app.run_once()
             status = HTTPStatus.OK if exit_code in {0, 2} else HTTPStatus.INTERNAL_SERVER_ERROR
-            self._send_json({"exit_code": exit_code, "summary": payload.get("summary", {}), "warnings": payload.get("warnings", [])}, status)
+            self._send_json({"exit_code": exit_code, "summary": payload.get("summary", {}), "warnings": payload.get("warnings", []), "last_crawl_at": self.tracker_app.last_crawl_at()}, status)
             return
         if path == "/api/scoring":
             try:
@@ -258,7 +286,7 @@ def render_app_shell() -> str:
     h2 {{ margin:0 0 8px; font-size:20px; }} .price {{ font-size:26px; font-weight:800; margin:0 0 10px; }}
     dl {{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }} dl div {{ border:1px solid var(--line); border-radius:12px; padding:8px; }} dt {{ color:var(--muted); font-size:12px; }} dd {{ margin:3px 0 0; font-weight:700; overflow-wrap:anywhere; }}
     form {{ display:grid; gap:8px; margin-top:14px; grid-template-columns:1fr 1fr auto; }} .score-form {{ grid-template-columns:repeat(5,minmax(120px,1fr)); align-items:end; }} .score-form label {{ display:grid; gap:6px; color:var(--muted); font-size:12px; }} .field-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:8px; margin-top:12px; }} .field-editor {{ border:1px solid var(--line); border-radius:12px; padding:8px; background:rgba(0,0,0,.16); }} .field-editor label,.readonly-field span {{ display:block; color:var(--muted); font-size:12px; margin-bottom:5px; }} .field-editor form {{ grid-template-columns:minmax(0,1fr) auto; margin-top:0; }} .field-editor textarea {{ min-height:76px; resize:vertical; }} select,input,textarea {{ min-width:0; border:1px solid var(--line); border-radius:10px; padding:10px; background:#09090b; color:var(--text); }}
-    .status {{ min-height:1.4em; }}
+    .status {{ min-height:1.4em; }} .crawl-meta {{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px; color:var(--muted); }} .crawl-meta strong {{ color:var(--text); }}
   </style>
 </head>
 <body>
@@ -267,6 +295,7 @@ def render_app_shell() -> str:
     <h1>Corvette Tracker WebUI</h1>
     <p class="muted">Manuelle Nachbesserungen werden als Overrides gespeichert und bei späteren Crawls nicht überschrieben.</p>
     <div class="toolbar"><button id="run">Jetzt crawlen</button><span id="status" class="status muted"></span></div>
+    <p class="crawl-meta">Letzter Crawl: <strong id="last-crawl">noch nie</strong></p>
   </header>
   <main class="wrap"><section class="panel"><h2>Scoring konfigurieren</h2><p class="muted">Standard: Schalter sehr wichtig, kein Cabrio wichtig, kein LS2 wichtig, Trim mittel. Werte werden in config.yaml gespeichert.</p><form id="scoring-form" class="score-form"><label>Schalter<input name="manual_transmission" type="number" min="0" max="100" data-score-weight="manual_transmission"></label><label>Kein Cabrio<input name="non_convertible" type="number" min="0" max="100" data-score-weight="non_convertible"></label><label>Kein LS2<input name="non_ls2" type="number" min="0" max="100" data-score-weight="non_ls2"></label><label>Trim<input name="preferred_trim" type="number" min="0" max="100" data-score-weight="preferred_trim"></label><label>Trims<input name="preferred_trims" placeholder="Grand Sport, Z06, ZR1"></label><button>Scoring speichern</button></form></section><section class="panel list-toolbar"><div><h2>Listings</h2><p class="muted">Sortierung basiert auf dem aktuellen Scoring.</p></div><label class="muted">Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option></select></label></section><div id="listings" class="grid"></div></main>
 <script data-field-registry="{field_registry_attr}">
@@ -275,6 +304,12 @@ let currentListings = [];
 function esc(value) {{ return String(value ?? '').replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}}[c])); }}
 function fmtEur(value) {{ return value == null ? 'k.A.' : Number(value).toLocaleString('de-DE') + ' €'; }}
 function fmtKm(value) {{ return value == null ? 'k.A.' : Number(value).toLocaleString('de-DE') + ' km'; }}
+function fmtDateTime(value) {{
+  if (!value) return 'noch nie';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('de-DE');
+}}
+function updateLastCrawl(value) {{ document.getElementById('last-crawl').textContent = fmtDateTime(value); }}
 function fieldValue(item, name) {{ const value = item[name]; return Array.isArray(value) ? value.join(', ') : (value ?? ''); }}
 function displayValue(value) {{
   if (value == null || value === '') return 'k.A.';
@@ -305,10 +340,16 @@ async function loadScoring() {{
   document.querySelectorAll('[data-score-weight]').forEach(input => input.value = weights[input.dataset.scoreWeight] ?? 0);
   document.querySelector('#scoring-form [name="preferred_trims"]').value = (scoring.preferred_trims || []).join(', ');
 }}
+async function loadStatus() {{
+  const response = await fetch('/api/status');
+  const payload = await response.json();
+  updateLastCrawl(payload.last_crawl_at);
+}}
 async function loadListings() {{
   const response = await fetch('/api/listings');
   const payload = await response.json();
   currentListings = payload.listings || [];
+  updateLastCrawl(payload.last_crawl_at);
   document.getElementById('status').textContent = `${{currentListings.length}} aktive Treffer`;
   renderListings();
 }}
@@ -439,9 +480,11 @@ document.getElementById('run').addEventListener('click', async () => {{
   const response = await fetch('/api/run', {{method:'POST'}});
   const payload = await response.json();
   document.getElementById('status').textContent = `Crawl fertig: ${{payload.summary?.total_active ?? 0}} Treffer`;
+  updateLastCrawl(payload.last_crawl_at);
   await loadListings();
 }});
 loadScoring();
+loadStatus();
 loadListings();
 </script>
 </body>
