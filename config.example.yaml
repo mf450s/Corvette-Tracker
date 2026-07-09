@@ -33,3 +33,25 @@ quality:
   min_by_source:
     AutoScout24: 5
     Kleinanzeigen: 10
+
+scoring:
+  # Score = base_score + matching preference weights - risk penalties, capped to 0..100.
+  # Current preference: Schalter sehr wichtig; kein Cabrio und kein LS2 wichtig; Trim mittel.
+  base_score: 20
+  weights:
+    manual_transmission: 30
+    non_convertible: 20
+    non_ls2: 20
+    preferred_trim: 10
+  preferred_trims:
+    - Grand Sport
+    - Z06
+    - ZR1
+  risk_penalties:
+    accident_reported: 18
+    damage_reported: 14
+    salvage_import_possible: 10
+    mileage_unclear: 8
+    no_tuv: 8
+    modified_heavily: 4
+    sold_or_reserved: 20

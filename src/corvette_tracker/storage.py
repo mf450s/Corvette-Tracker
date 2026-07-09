@@ -107,6 +107,28 @@ class TrackerStore:
         rows = self.conn.execute("SELECT payload_json FROM listings ORDER BY COALESCE(price_eur, 999999999), id").fetchall()
         return [Listing(**json.loads(row["payload_json"])) for row in rows]
 
+    def listing_history(self, listing_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT captured_at, price_eur, mileage_km, change_type, payload_json
+            FROM snapshots
+            WHERE listing_id = ?
+            ORDER BY captured_at DESC, id DESC
+            LIMIT ?
+            """,
+            (listing_id, limit),
+        ).fetchall()
+        return [
+            {
+                "captured_at": row["captured_at"],
+                "price_eur": row["price_eur"],
+                "mileage_km": row["mileage_km"],
+                "change_type": row["change_type"],
+                "listing": json.loads(row["payload_json"]),
+            }
+            for row in rows
+        ]
+
     def update_overrides(self, listing_id: str, updates: dict[str, Any]) -> Listing:
         current = self.get_listing(listing_id)
         if current is None:

@@ -2,11 +2,12 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from dataclasses import fields
 from pathlib import Path
 
 from corvette_tracker.models import Listing
-from corvette_tracker.storage import TrackerStore
-from corvette_tracker.web import TrackerWebApp, parse_interval_seconds
+from corvette_tracker.storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, TrackerStore
+from corvette_tracker.web import TrackerWebApp, parse_interval_seconds, render_app_shell
 
 
 def make_listing():
@@ -63,6 +64,107 @@ def test_web_api_lists_and_patches_manual_fields(tmp_path: Path):
     finally:
         server.shutdown()
         thread.join(timeout=5)
+
+
+def test_web_api_returns_listing_history(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    store.update_overrides("autoscout24_123", {"price_eur": 52900})
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = request_json(f"{base_url}/api/listings/autoscout24_123/history")
+
+        assert status == 200
+        assert payload["listing_id"] == "autoscout24_123"
+        assert [row["change_type"] for row in payload["history"]] == ["manual_override", "new"]
+        assert payload["history"][0]["price_eur"] == 52900
+        assert "captured_at" in payload["history"][0]
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_web_api_reads_and_updates_scoring_config(tmp_path: Path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("scoring:\n  weights:\n    manual_transmission: 30\n", encoding="utf-8")
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path, config_path=config_file)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = request_json(f"{base_url}/api/scoring")
+        assert status == 200
+        assert payload["scoring"]["weights"]["manual_transmission"] == 30
+
+        status, updated = request_json(
+            f"{base_url}/api/scoring",
+            method="PATCH",
+            payload={"weights": {"manual_transmission": 45, "preferred_trim": 12}, "preferred_trims": ["Z06"]},
+        )
+
+        assert status == 200
+        assert updated["scoring"]["weights"]["manual_transmission"] == 45
+        saved = config_file.read_text(encoding="utf-8")
+        assert "manual_transmission: 45" in saved
+        assert "preferred_trim: 12" in saved
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_web_shell_contains_scoring_configuration_form():
+    html = render_app_shell()
+
+    assert "Scoring konfigurieren" in html
+    assert "manual_transmission" in html
+    assert "/api/scoring" in html
+
+
+def test_web_shell_can_sort_listings_by_score():
+    html = render_app_shell()
+
+    assert "listing-sort" in html
+    assert "score-desc" in html
+    assert "Score hoch" in html
+    assert "score-asc" in html
+    assert "Score niedrig" in html
+    assert "sortListings" in html
+
+
+def test_web_shell_exposes_all_listing_fields_and_inline_editors():
+    html = render_app_shell()
+
+    assert "data-field-registry" in html
+    assert "renderAllFields" in html
+    assert "renderInlineEditor" in html
+    assert "renderDetailPage" in html
+    assert "renderOverviewCard" in html
+    assert "Verlauf" in html
+    assert "/api/listings/" in html
+    assert "/history" in html
+    for field in fields(Listing):
+        assert f'"{field.name}"' in html
+    for field_name in EDITABLE_FIELDS:
+        assert f'"{field_name}"' in html
+    for field_name in PROTECTED_OVERRIDE_FIELDS:
+        assert f'"{field_name}"' in html
+
+
+def test_web_shell_overview_is_compact_and_links_to_detail_pages():
+    html = render_app_shell()
+
+    assert "data-overview-card" in html
+    assert "Details bearbeiten" in html
+    assert "car/" in html
+    assert "overview-specs" in html
+    assert "sorted.map(item => renderOverviewCard(item))" in html
 
 
 def test_web_api_returns_404_for_missing_listing(tmp_path: Path):

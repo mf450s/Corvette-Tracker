@@ -5,6 +5,7 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 from .models import Listing
+from .scoring import apply_score
 
 C6_YEAR_RE = re.compile(r"\b(200[5-9]|201[0-3])\b")
 PRICE_RE = re.compile(r"(?<!\d)(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*(?:€|EUR|VB)?", re.I)
@@ -230,37 +231,6 @@ def extract_risk_flags(text: str) -> list[str]:
     return list(dict.fromkeys(flags))
 
 
-def score_listing(price: int | None, mileage: int | None, trim: str | None, accident_status: str, risk_flags: list[str]) -> int:
-    score = 50
-    if trim in {"Grand Sport", "Z06", "ZR1"}:
-        score += {"Grand Sport": 10, "Z06": 14, "ZR1": 18}[trim]
-    if mileage is not None:
-        if mileage < 50_000:
-            score += 12
-        elif mileage < 100_000:
-            score += 7
-        elif mileage > 160_000:
-            score -= 8
-    if price is not None:
-        if price < 45_000:
-            score += 8
-        elif price > 90_000:
-            score -= 4
-    if accident_status == "unfallfrei":
-        score += 8
-    penalties = {
-        "accident_reported": 18,
-        "damage_reported": 14,
-        "salvage_import_possible": 10,
-        "mileage_unclear": 8,
-        "no_tuv": 8,
-        "modified_heavily": 4,
-        "sold_or_reserved": 20,
-    }
-    score -= sum(penalties.get(flag, 0) for flag in risk_flags)
-    return max(0, min(100, score))
-
-
 def _append_unique(items: list[str], value: str) -> None:
     if value not in items:
         items.append(value)
@@ -410,5 +380,4 @@ def normalize_listing(
         inference_notes=inference_notes,
         conflict_flags=conflict_flags,
     )
-    listing.score = score_listing(price, mileage, trim, accident, risks)
-    return listing
+    return apply_score(listing)
