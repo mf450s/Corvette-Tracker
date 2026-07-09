@@ -254,7 +254,7 @@ def render_app_shell() -> str:
     a.secondary {{ background:#27272a; }} .button-row {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }} .title-link {{ color:var(--text); text-decoration:none; }} .title-link:hover {{ color:white; text-decoration:underline; }}
     .muted {{ color:var(--muted); }} .toolbar {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:18px; }}
     .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:16px; }} .card,.panel {{ border:1px solid var(--line); border-radius:18px; background:var(--card); overflow:hidden; }} .panel {{ padding:16px; margin-bottom:18px; }} .list-toolbar {{ display:flex; justify-content:space-between; align-items:end; gap:12px; flex-wrap:wrap; }}
-    .image {{ aspect-ratio:16/9; background:#18181b; display:block; }} .image img {{ width:100%; height:100%; object-fit:cover; }} .body {{ padding:16px; }}
+    .image {{ aspect-ratio:16/9; background:#18181b; display:block; position:relative; overflow:hidden; }} .image img {{ width:100%; height:100%; object-fit:cover; }} .score-badge {{ position:absolute; top:10px; left:10px; z-index:1; display:inline-flex; align-items:center; justify-content:center; min-width:54px; padding:7px 11px; border-radius:999px; background:linear-gradient(135deg,#ef4444,#f59e0b); color:white; font-weight:900; box-shadow:0 10px 26px rgba(0,0,0,.38); }} .body {{ padding:16px; }}
     h2 {{ margin:0 0 8px; font-size:20px; }} .price {{ font-size:26px; font-weight:800; margin:0 0 10px; }}
     dl {{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }} dl div {{ border:1px solid var(--line); border-radius:12px; padding:8px; }} dt {{ color:var(--muted); font-size:12px; }} dd {{ margin:3px 0 0; font-weight:700; overflow-wrap:anywhere; }}
     form {{ display:grid; gap:8px; margin-top:14px; grid-template-columns:1fr 1fr auto; }} .score-form {{ grid-template-columns:repeat(5,minmax(120px,1fr)); align-items:end; }} .score-form label {{ display:grid; gap:6px; color:var(--muted); font-size:12px; }} .field-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:8px; margin-top:12px; }} .field-editor {{ border:1px solid var(--line); border-radius:12px; padding:8px; background:rgba(0,0,0,.16); }} .field-editor label,.readonly-field span {{ display:block; color:var(--muted); font-size:12px; margin-bottom:5px; }} .field-editor form {{ grid-template-columns:minmax(0,1fr) auto; margin-top:0; }} .field-editor textarea {{ min-height:76px; resize:vertical; }} select,input,textarea {{ min-width:0; border:1px solid var(--line); border-radius:10px; padding:10px; background:#09090b; color:var(--text); }}
@@ -330,7 +330,7 @@ function renderOverviewCard(item) {{
   const detailUrl = '/car/' + encodeURIComponent(item.id);
   const offerUrl = item.url || detailUrl;
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}">
-    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer">${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
+    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{esc(item.score ?? 0)}}%</span>${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
     <div class="body">
       <p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p>
       <h2><a class="title-link" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer">${{esc(item.title)}}</a></h2>
