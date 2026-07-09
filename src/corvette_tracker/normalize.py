@@ -160,8 +160,10 @@ def extract_body_style(text: str) -> str | None:
     lower = (text or "").lower()
     if any(x in lower for x in ("cabrio", "convertible", "roadster")):
         return "Cabrio"
-    if any(x in lower for x in ("targa", "t-top", "t top", "removable roof", "coupé", "coupe", "coup", "hardtop")):
+    if any(x in lower for x in ("targa", "t-top", "t top", "removable roof", "hardtop")):
         return "Targa"
+    if any(x in lower for x in ("coupé", "coupe", "coup")):
+        return "Coupé"
     return None
 
 
@@ -269,17 +271,18 @@ def apply_c6_inferences(
         inferred_transmission = "manual"
 
     inferred_body_style = body_style
-    if inferred_body_style == "Coupé":
-        _append_unique(inference_notes, "Coupé/Coupe → Targa")
-        inferred_body_style = "Targa"
-    if inferred_body_style == "Targa" and body_style in {"Targa", "Coupé"}:
-        _append_unique(inference_notes, "Coupé/Coupe → Targa")
     if inferred_trim in {"Z06", "ZR1"}:
-        if inferred_body_style and inferred_body_style != "Targa":
+        if inferred_body_style and inferred_body_style != "Coupé":
             _append_unique(conflict_flags, f"conflict_{inferred_trim.lower()}_body_{inferred_body_style.lower()}")
-        if inferred_body_style != "Targa":
-            _append_unique(inference_notes, f"{inferred_trim} → Targa")
-        inferred_body_style = "Targa"
+        if inferred_body_style != "Coupé":
+            _append_unique(inference_notes, f"{inferred_trim} → Coupé")
+        inferred_body_style = "Coupé"
+    else:
+        if inferred_body_style == "Coupé":
+            _append_unique(inference_notes, "Coupé/Coupe → Targa")
+            inferred_body_style = "Targa"
+        if inferred_body_style == "Targa" and body_style in {"Targa", "Coupé"}:
+            _append_unique(inference_notes, "Coupé/Coupe → Targa")
 
     return inferred_trim, inferred_transmission, inferred_body_style, inference_notes, conflict_flags
 
