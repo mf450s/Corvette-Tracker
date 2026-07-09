@@ -14,13 +14,19 @@
   .venv/bin/python -m pip install -e '.[dev]'
   cp config.example.yaml config.yaml
   ```
-- Run all tests exactly like CI:
+- Prefer `rtk` wrappers where available to keep tool output compact. Known-good wrappers here: `rtk pytest`, `rtk git`, `rtk gh`, and `rtk diff`. Fall back to raw commands only when an `rtk` wrapper is missing, changes behavior, hides needed detail, or fails in a way the raw command does not.
+- Run tests with compact output when the venv is on PATH:
+  ```bash
+  PATH="$PWD/.venv/bin:$PATH" rtk pytest -q
+  ```
+  Note: this project has a provider-loading test that imports `tests.test_ai_enrichment:FakeProvider`; if `rtk pytest` fails there while the raw command passes, treat it as an `rtk` wrapper/import-path limitation and verify with the CI-equivalent raw command below.
+- CI-equivalent raw command, useful when verifying exact CI behavior or debugging wrapper issues:
   ```bash
   .venv/bin/python -m pytest -q
   ```
 - Run one focused test:
   ```bash
-  .venv/bin/python -m pytest tests/test_cli.py -q
+  PATH="$PWD/.venv/bin:$PATH" rtk pytest tests/test_cli.py -q
   ```
 - Run with live sources:
   ```bash
@@ -36,6 +42,7 @@
 - `.gitignore` already excludes the SQLite DB, `site/`, feed/export artifacts, caches, `.venv/`, and egg-info. Do not commit generated run output unless explicitly asked.
 - CI runs on push/PR to `development` with Python 3.13 and only installs `.[dev]` before `python -m pytest -q`.
 - Branch from `development`; PRs target `development`. Do not push directly to `main` or release branches.
+- After implementing and verifying changes, commit and push the feature/fix branch without waiting for explicit prompting unless the user says not to. Use Conventional Commits. Prefer `rtk git status`, `rtk git diff`, `rtk git add`, `rtk git commit`, `rtk git push`, and `rtk gh ...` where possible; fall back to raw `git`/`gh` if the wrapper lacks needed behavior.
 
 ## Source/network gotchas
 - No login/CAPTCHA/private contact scraping. Public pages only.

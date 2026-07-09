@@ -140,6 +140,40 @@ Die Website zeigt pro Listing:
 - Risiko-Hinweise
 - Quellen-Warnungen, z. B. wenn mobile.de blockt
 
+## Scoring
+
+Der Score ist eine Preference-Heuristik von `0..100`. Aktueller Standard:
+
+```text
+Score = base_score + erfüllte Wunsch-Kriterien - Risiko-Abzüge
+```
+
+Default-Gewichtung:
+
+| Kriterium | Bedeutung | Punkte |
+|---|---|---:|
+| Schalter (`transmission: manual`) | sehr wichtig | +30 |
+| Kein Cabrio (`body_style` nicht Cabrio/Convertible) | wichtig | +20 |
+| Kein LS2 (`engine`/`probable_engine` bekannt und nicht LS2) | wichtig | +20 |
+| Bevorzugter Trim (`Grand Sport`, `Z06`, `ZR1`) | mittel | +10 |
+
+`base_score` ist standardmäßig `20`, dadurch landet ein Listing, das alle Wunsch-Kriterien erfüllt, bei `100`. Risiko-Flags wie `damage_reported`, `no_tuv` oder `sold_or_reserved` ziehen danach Punkte ab. Der finale Wert wird auf `0..100` begrenzt.
+
+Konfigurierbar in `config.yaml`:
+
+```yaml
+scoring:
+  base_score: 20
+  weights:
+    manual_transmission: 30
+    non_convertible: 20
+    non_ls2: 20
+    preferred_trim: 10
+  preferred_trims: [Grand Sport, Z06, ZR1]
+```
+
+Im WebUI gibt es zusätzlich den Bereich **Scoring konfigurieren**. Änderungen werden in dieselbe `config.yaml` geschrieben und bei Export/API-Ausgabe direkt neu angewendet.
+
 ## JSON-Felder
 
 Der JSON-Export enthält u. a.:

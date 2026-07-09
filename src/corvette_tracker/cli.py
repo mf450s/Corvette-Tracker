@@ -13,6 +13,7 @@ from .ai_enrichment import AIEnrichmentProvider, enrich_listings
 from .dedupe import assign_clusters
 from .feed import build_feed_payload, write_exports
 from .models import Listing
+from .scoring import DEFAULT_SCORING_CONFIG, apply_scores, merge_scoring_config
 from .sources.autouncle import DEFAULT_URL as AUTOUNCLE_URL, fetch_autouncle
 from .sources.autoscout24 import DEFAULT_URL as AS24_URL, fetch_autoscout24, parse_autoscout24_search
 from .sources.classic_trader import DEFAULT_URL as CLASSIC_TRADER_URL, fetch_classic_trader
@@ -36,6 +37,7 @@ DEFAULT_CONFIG = {
         "min_total": 10,
         "min_by_source": {"AutoScout24": 5, "Kleinanzeigen": 10},
     },
+    "scoring": DEFAULT_SCORING_CONFIG,
 }
 
 
@@ -48,6 +50,7 @@ def load_config(path: str | None) -> dict:
     merged["sources"] = DEFAULT_CONFIG["sources"] | loaded.get("sources", {})
     merged["ai_enrichment"] = DEFAULT_CONFIG["ai_enrichment"] | loaded.get("ai_enrichment", {})
     merged["quality"] = DEFAULT_CONFIG["quality"] | loaded.get("quality", {})
+    merged["scoring"] = merge_scoring_config(loaded.get("scoring"))
     return merged
 
 
@@ -152,9 +155,11 @@ def run_tracker(
             listings = enrich_listings(listings, load_ai_provider(provider_path), max_images=int(ai_max_images or ai_config.get("max_images", 8)))
         except Exception as exc:
             warnings.append(f"AI enrichment: {exc}")
+    scoring_config = config.get("scoring")
+    listings = apply_scores(listings, scoring_config)
     store = TrackerStore(db_path)
     changed = store.upsert_listings(listings)
-    payload = build_feed_payload(store.list_active())
+    payload = build_feed_payload(apply_scores(store.list_active(), scoring_config))
     if warnings:
         payload["warnings"] = warnings
     write_exports(payload, resolved_output_dir)
