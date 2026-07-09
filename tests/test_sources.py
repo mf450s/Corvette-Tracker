@@ -5,6 +5,7 @@ from corvette_tracker.sources.kleinanzeigen import (
     fetch_kleinanzeigen,
     normalize_kleinanzeigen_image_url,
     parse_kleinanzeigen_detail_images,
+    parse_kleinanzeigen_pagination_urls,
     parse_kleinanzeigen_search,
 )
 
@@ -182,6 +183,31 @@ def test_parse_kleinanzeigen_search_extracts_normalized_listings():
     assert listing.transmission == "manual"
 
 
+def test_parse_kleinanzeigen_search_extracts_links_when_article_tree_is_unusable():
+    html = '''
+    <html><body>
+      <div class="result-list">
+        <h2 class="text-module-begin"><a class="ellipsis" href="/s-anzeige/corvette-c6-ls2-targa-manual/3454859454-216-8088">Corvette C6 LS2 Targa Manual</a></h2>
+        <p class="aditem-main--middle--price-shipping--price">37.500 €</p>
+        <p>82.000 km EZ 03/2006 Getriebe Manuell Köln</p>
+        <h2 class="text-module-begin"><a class="ellipsis" href="/s-anzeige/corvette-c6-ls3-coupe/3426217519-216-16235">Corvette C6 6.2 V8 Coupe LS3 Autom.</a></h2>
+        <p class="aditem-main--middle--price-shipping--price">44.900 €</p>
+        <p>61.000 km EZ 04/2008 Automatik Hamburg</p>
+        <h2 class="text-module-begin"><a class="ellipsis" href="/s-anzeige/suche-eine-corvette-c6/3447740769-216-6241">Suche eine Corvette c6</a></h2>
+        <p>VB</p>
+      </div>
+    </body></html>
+    '''
+
+    listings = parse_kleinanzeigen_search(html, "https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216")
+
+    assert [listing.source_listing_id for listing in listings] == ["3454859454", "3426217519"]
+    assert [listing.title for listing in listings] == ["Corvette C6 LS2 Targa Manual", "Corvette C6 6.2 V8 Coupe LS3 Autom."]
+    assert listings[0].price_eur == 37500
+    assert listings[0].transmission == "manual"
+    assert listings[1].transmission == "automatic"
+
+
 def test_fetch_kleinanzeigen_fills_missing_transmission_from_detail_page(monkeypatch):
     search_html = KLEINANZEIGEN_HTML.replace(" Getriebe Manuell", "")
     detail_html = '''
@@ -236,6 +262,14 @@ def test_fetch_kleinanzeigen_follows_pagination_and_dedupes(monkeypatch):
     listings = fetch_kleinanzeigen("https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216")
 
     assert [listing.source_listing_id for listing in listings] == ["ka-1", "ka-dup", "ka-3"]
+
+
+def test_parse_kleinanzeigen_pagination_urls_accepts_link_rel_next():
+    html = '<html><head><link rel="next" href="/s-autos/sortierung:neuste/seite:2/corvette-c6/k0c216"/></head></html>'
+
+    assert parse_kleinanzeigen_pagination_urls(html, "https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216") == [
+        "https://www.kleinanzeigen.de/s-autos/sortierung:neuste/seite:2/corvette-c6/k0c216"
+    ]
 
 
 def test_normalize_kleinanzeigen_image_url_prefers_detail_gallery_variant():

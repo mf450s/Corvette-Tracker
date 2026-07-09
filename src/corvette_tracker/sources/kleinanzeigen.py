@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import re
 from urllib.parse import urljoin, urlparse
 
@@ -61,13 +62,46 @@ def parse_kleinanzeigen_detail_images(html: str, base_url: str) -> list[str]:
     return normalized
 
 
-def parse_kleinanzeigen_detail_text(html: str) -> str:
-    soup = BeautifulSoup(html, "html.parser")
+def parse_kleinanzeigen_detail_text(html_text: str) -> str:
+    soup = BeautifulSoup(html_text, "html.parser")
     return _text(soup)
 
 
-def parse_kleinanzeigen_search(html: str, base_url: str = DEFAULT_URL) -> list[Listing]:
-    soup = BeautifulSoup(html, "html.parser")
+def _listing_id_from_url(url: str, fallback: str) -> str:
+    match = re.search(r"/(\d+)-216-", url)
+    return match.group(1) if match else fallback
+
+
+def _fallback_listing_segments(html_text: str, base_url: str) -> list[Listing]:
+    matches = list(re.finditer(r'<h2[^>]*>\s*<a[^>]+href=["\']([^"\']*/s-anzeige/[^"\']+)["\'][^>]*>(.*?)</a>\s*</h2>', html_text, flags=re.I | re.S))
+    listings: list[Listing] = []
+    for index, match in enumerate(matches):
+        href = html.unescape(match.group(1))
+        title = BeautifulSoup(match.group(2), "html.parser").get_text(" ", strip=True)
+        if not title:
+            continue
+        end = matches[index + 1].start() if index + 1 < len(matches) else min(len(html_text), match.end() + 3000)
+        segment = html_text[match.start():end]
+        segment_soup = BeautifulSoup(segment, "html.parser")
+        text = _text(segment_soup)
+        url = urljoin(base_url, href)
+        listing = normalize_listing(
+            source=SOURCE,
+            source_listing_id=_listing_id_from_url(url, f"ka-fallback-{index}"),
+            url=url,
+            title=title,
+            description=text,
+            price_text=text,
+            location_raw=None,
+            image_urls=_images(segment_soup, base_url),
+        )
+        if listing:
+            listings.append(listing)
+    return listings
+
+
+def parse_kleinanzeigen_search(html_text: str, base_url: str = DEFAULT_URL) -> list[Listing]:
+    soup = BeautifulSoup(html_text, "html.parser")
     articles = soup.select("article.aditem") or soup.select("article") or soup.select("li.ad-listitem")
     listings: list[Listing] = []
     for index, article in enumerate(articles):
@@ -98,18 +132,23 @@ def parse_kleinanzeigen_search(html: str, base_url: str = DEFAULT_URL) -> list[L
         )
         if listing:
             listings.append(listing)
-    return listings
+    return _dedupe_listings(listings + _fallback_listing_segments(html_text, base_url))
 
 
-def parse_kleinanzeigen_pagination_urls(html: str, base_url: str) -> list[str]:
-    soup = BeautifulSoup(html, "html.parser")
+def parse_kleinanzeigen_pagination_urls(html_text: str, base_url: str) -> list[str]:
+    soup = BeautifulSoup(html_text, "html.parser")
     base_host = urlparse(base_url).netloc
     urls: list[str] = []
-    for link in soup.select('a[href*="/s-autos/"][href*="seite:"]'):
+    for link in soup.select('a[href*="/s-autos/"][href*="seite:"], link[href*="/s-autos/"][href*="seite:"]'):
         href = link.get("href")
         if not href:
             continue
         url = urljoin(base_url, href)
+        parsed = urlparse(url)
+        if parsed.netloc == base_host and "/s-anzeige/" not in parsed.path:
+            urls.append(url)
+    for href in re.findall(r'href=["\']([^"\']*/s-autos/[^"\']*seite:[^"\']+)["\']', html_text):
+        url = urljoin(base_url, html.unescape(href))
         parsed = urlparse(url)
         if parsed.netloc == base_host and "/s-anzeige/" not in parsed.path:
             urls.append(url)
@@ -118,12 +157,14 @@ def parse_kleinanzeigen_pagination_urls(html: str, base_url: str) -> list[str]:
 
 def _dedupe_listings(listings: list[Listing]) -> list[Listing]:
     deduped: list[Listing] = []
-    seen: set[tuple[str, str]] = set()
+    seen_ids: set[tuple[str, str]] = set()
+    seen_urls: set[str] = set()
     for listing in listings:
-        key = (listing.source, listing.source_listing_id or listing.url)
-        if key in seen:
+        id_key = (listing.source, listing.source_listing_id or listing.url)
+        if id_key in seen_ids or listing.url in seen_urls:
             continue
-        seen.add(key)
+        seen_ids.add(id_key)
+        seen_urls.add(listing.url)
         deduped.append(listing)
     return deduped
 
