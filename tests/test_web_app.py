@@ -88,6 +88,45 @@ def test_web_api_returns_listing_history(tmp_path: Path):
         thread.join(timeout=5)
 
 
+def test_web_api_status_returns_persisted_last_crawl_time(tmp_path: Path):
+    export_dir = tmp_path / "data" / "exports"
+    export_dir.mkdir(parents=True)
+    export_dir.joinpath("latest.json").write_text(json.dumps({"generated_at": "2026-07-09T12:34:56+00:00"}), encoding="utf-8")
+    app = TrackerWebApp(store=TrackerStore(tmp_path / "tracker.sqlite"), output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = request_json(f"{base_url}/api/status")
+
+        assert status == 200
+        assert payload["last_crawl_at"] == "2026-07-09T12:34:56+00:00"
+        assert payload["last_run"]["generated_at"] == "2026-07-09T12:34:56+00:00"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_web_api_run_response_includes_last_crawl_time(tmp_path: Path):
+    def run_callback():
+        return 0, {"generated_at": "2026-07-09T13:00:00+00:00", "summary": {"total_active": 1}, "warnings": []}
+
+    app = TrackerWebApp(store=TrackerStore(tmp_path / "tracker.sqlite"), output_dir=tmp_path, run_callback=run_callback)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = request_json(f"{base_url}/api/run", method="POST")
+
+        assert status == 200
+        assert payload["last_crawl_at"] == "2026-07-09T13:00:00+00:00"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
 def test_web_api_reads_and_updates_scoring_config(tmp_path: Path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text("scoring:\n  weights:\n    manual_transmission: 30\n", encoding="utf-8")
@@ -125,6 +164,15 @@ def test_web_shell_contains_scoring_configuration_form():
     assert "Scoring konfigurieren" in html
     assert "manual_transmission" in html
     assert "/api/scoring" in html
+
+
+def test_web_shell_always_shows_last_crawl_status():
+    html = render_app_shell()
+
+    assert "Letzter Crawl" in html
+    assert "last-crawl" in html
+    assert "/api/status" in html
+    assert "updateLastCrawl" in html
 
 
 def test_web_shell_can_sort_listings_by_score():
