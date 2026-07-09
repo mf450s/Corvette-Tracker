@@ -171,6 +171,15 @@ def test_web_shell_overview_links_directly_to_original_offer_and_keeps_detail_ed
     assert "sorted.map(item => renderOverviewCard(item))" in html
 
 
+def test_web_shell_shows_score_badge_on_overview_preview_image():
+    html = render_app_shell()
+
+    assert "score-badge" in html
+    assert '<span class="score-badge">${esc(item.score ?? 0)}%</span>' in html
+    assert html.index('<span class="score-badge">${esc(item.score ?? 0)}%</span>') > html.index('<a class="image"')
+    assert html.index('<span class="score-badge">${esc(item.score ?? 0)}%</span>') < html.index('${image ? `<img')
+
+
 def test_web_api_returns_404_for_missing_listing(tmp_path: Path):
     app = TrackerWebApp(store=TrackerStore(tmp_path / "tracker.sqlite"), output_dir=tmp_path)
     server = app.make_server("127.0.0.1", 0)
