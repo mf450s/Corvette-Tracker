@@ -83,6 +83,8 @@ def test_render_html_site_contains_cards_filters_and_required_vehicle_fields():
     assert "Details ansehen" in html
     assert "source-filter" in html
     assert "sort-order" in html
+    assert '<div class="score-badge">87%</div>' in html
+    assert html.index('<div class="score-badge">87%</div>') < html.index('<a class="image"')
     for label, value in [
         ("Motor", "LS3"),
         ("PS", "437 PS"),

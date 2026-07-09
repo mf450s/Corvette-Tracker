@@ -26,6 +26,15 @@ def _page_images(soup: BeautifulSoup, base_url: str) -> list[str]:
     return list(dict.fromkeys(urls))
 
 
+def _listing_images(node, base_url: str) -> list[str]:
+    urls: list[str] = []
+    for img in node.select("img"):
+        src = img.get("src") or img.get("data-src")
+        if src and not src.startswith("data:") and "car_images" in src:
+            urls.append(urljoin(base_url, src))
+    return list(dict.fromkeys(urls))
+
+
 def _price_text(text: str) -> str:
     match = re.search(r"(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*€", text)
     return match.group(0) if match else text
@@ -56,7 +65,7 @@ def parse_autouncle_search(html: str, base_url: str = DEFAULT_URL) -> list[Listi
             description=text,
             price_text=_price_text(text),
             location_raw="",
-            image_urls=page_images[index:index + 1] or page_images[:1],
+            image_urls=_listing_images(link, base_url) or page_images[index:index + 1] or page_images[:1],
         )
         if listing:
             listings.append(listing)

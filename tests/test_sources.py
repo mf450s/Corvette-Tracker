@@ -109,10 +109,57 @@ def test_parse_autoscout24_next_data_without_anchor_href():
     assert listings[0].image_urls == ["https://img.example/as24-next.webp"]
 
 
+def test_parse_autoscout24_detail_next_data_uses_listing_details_fields():
+    html = '''
+    <html><body><script id="__NEXT_DATA__" type="application/json">
+    {"props":{"pageProps":{"listingDetails":{"id":"e7fbd6c4-e19f-4a64-9b89-c8bd28ba3111","url":"/angebote/corvette-c6-coupe-automatik-benzin-cat_ma16380mo19140-e7fbd6c4-e19f-4a64-9b89-c8bd28ba3111","price":{"priceRaw":39900,"priceFormatted":"€ 39.900"},"images":["https://prod.pictures.autoscout24.net/listing-images/e7fbd6c4.jpg/250x188.webp"],"location":{"zip":"48143","city":"Münster"},"vehicle":{"make":"Chevrolet","model":"Corvette","modelVersionInput":"C6 Coupe Automatik","mileageInKmRaw":82000,"firstRegistrationDate":"2006-06-01","powerInHp":404,"gearbox":"Automatic","bodyType":"Coupe"},"vehicleDetails":[{"label":"Getriebe","data":"Automatik"},{"label":"Karosserieform","data":"Coupé"},{"label":"Leistung","data":"297 kW (404 PS)"},{"label":"Kilometerstand","data":"82.000 km"}]}}}}
+    </script></body></html>
+    '''
+
+    listings = parse_autoscout24_search(html, "https://www.autoscout24.de/angebote/corvette-c6-coupe-automatik-benzin-cat_ma16380mo19140-e7fbd6c4-e19f-4a64-9b89-c8bd28ba3111")
+
+    assert len(listings) == 1
+    listing = listings[0]
+    assert listing.source_listing_id == "e7fbd6c4-e19f-4a64-9b89-c8bd28ba3111"
+    assert listing.transmission == "automatic"
+    assert listing.engine is None
+    assert listing.probable_engine == "LS2"
+    assert listing.trim == "Base"
+    assert listing.body_style == "Targa"
+    assert listing.price_eur == 39900
+    assert listing.mileage_km == 82000
+    assert listing.image_urls == ["https://prod.pictures.autoscout24.net/listing-images/e7fbd6c4.jpg/1920x1080.webp"]
+
+
 def test_normalize_autoscout24_image_url_prefers_large_webp_variant():
     url = "https://prod.pictures.autoscout24.net/listing-images/abc.jpg/250x188.webp"
 
     assert normalize_autoscout24_image_url(url) == "https://prod.pictures.autoscout24.net/listing-images/abc.jpg/1920x1080.webp"
+
+
+def test_parse_autouncle_search_uses_listing_scoped_images_not_global_page_images():
+    html = '''
+    <html><body>
+    <img src="https://www.autouncle.de/assets/autouncle-logo.webp" />
+    <a href="/de/d/217293039-gebraucht-2007-chevrolet-corvette-lt-404-ps">
+      <img src="https://images.autouncle.com/de/car_images/medium_real-2007-corvette.webp" />
+      Gebraucht 2007 Chevrolet Corvette C6 LT 404 PS 58.000 km 39.900 €
+    </a>
+    <a href="/de/d/148078450-gebraucht-2008-chevrolet-corvette">
+      <img src="https://images.autouncle.com/de/car_images/medium_real-2008-corvette.webp" />
+      Gebraucht 2008 Chevrolet Corvette C6 404 PS 68.000 km 42.900 €
+    </a>
+    </body></html>
+    '''
+
+    listings = parse_autouncle_search(html, "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6")
+
+    assert [listing.source_listing_id for listing in listings] == [
+        "217293039-gebraucht-2007-chevrolet-corvette-lt-404-ps",
+        "148078450-gebraucht-2008-chevrolet-corvette",
+    ]
+    assert listings[0].image_urls == ["https://images.autouncle.com/de/car_images/medium_real-2007-corvette.webp"]
+    assert listings[1].image_urls == ["https://images.autouncle.com/de/car_images/medium_real-2008-corvette.webp"]
 
 
 def test_normalize_autoscout24_image_url_leaves_non_autoscout_urls_alone():

@@ -242,6 +242,25 @@ def test_extract_trim_does_not_turn_base_coupe_into_z06_from_unrelated_text():
     assert listing.model == "Chevrolet Corvette C6 Targa"
 
 
+def test_price_decimal_separator_does_not_infer_ls7_engine():
+    listing = normalize_listing(
+        source="AutoScout24",
+        source_listing_id="base-coupe",
+        url="https://example.test/base-coupe",
+        title="Corvette C6 Coupe Automatik",
+        description="C6 Coupe Automatik 404 PS Automatik 5.967 cm³ 5967",
+        price_text="€ 47.000",
+        location_raw="Bierum",
+        image_urls=[],
+    )
+
+    assert listing is not None
+    assert listing.engine is None
+    assert listing.probable_engine == "LS2"
+    assert listing.transmission == "automatic"
+    assert listing.trim == "Base"
+
+
 def test_normalize_listing_returns_structured_c6_listing_with_score():
     listing = normalize_listing(
         source="fixture",
