@@ -57,18 +57,24 @@ def _parse_next_data(soup: BeautifulSoup, base_url: str) -> list[Listing]:
         data = json.loads(script.get_text())
     except json.JSONDecodeError:
         return []
-    raw_listings = data.get("props", {}).get("pageProps", {}).get("listings", []) or []
+    page_props = data.get("props", {}).get("pageProps", {})
+    detail_listing = page_props.get("listingDetails")
+    raw_listings = [detail_listing] if isinstance(detail_listing, dict) else page_props.get("listings", []) or []
     listings: list[Listing] = []
     for raw in raw_listings:
         vehicle = raw.get("vehicle") or {}
-        details = " ".join(str((item or {}).get("data") or (item or {}).get("label") or "") for item in raw.get("vehicleDetails", []) or [])
+        details = " ".join(
+            " ".join(str(value).strip() for value in ((item or {}).get("label"), (item or {}).get("data")) if str(value or "").strip())
+            for item in raw.get("vehicleDetails", []) or []
+        )
         title_parts = [vehicle.get("make") or "Chevrolet", vehicle.get("model") or "Corvette", vehicle.get("modelVersionInput") or ""]
         title = " ".join(str(part).strip() for part in title_parts if str(part or "").strip())
         price = raw.get("price") or {}
         location = raw.get("location") or {}
         location_raw = " ".join(str(x).strip() for x in [location.get("zip"), location.get("city")] if str(x or "").strip())
         url = urljoin(base_url, raw.get("url") or "")
-        description = " ".join([title, details, location_raw])
+        vehicle_values = " ".join(str(value) for value in vehicle.values() if isinstance(value, str | int | float))
+        description = " ".join([title, details, vehicle_values, location_raw])
         listing = normalize_listing(
             source=SOURCE,
             source_listing_id=str(raw.get("id") or raw.get("identifier") or url),
@@ -82,6 +88,8 @@ def _parse_next_data(soup: BeautifulSoup, base_url: str) -> list[Listing]:
         if listing:
             if price.get("priceRaw"):
                 listing.price_eur = int(price["priceRaw"])
+            if vehicle.get("mileageInKmRaw") and listing.mileage_km is None:
+                listing.mileage_km = int(vehicle["mileageInKmRaw"])
             listings.append(listing)
     return listings
 

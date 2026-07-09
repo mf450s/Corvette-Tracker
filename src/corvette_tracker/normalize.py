@@ -94,13 +94,13 @@ def extract_engine(text: str) -> str | None:
     for code in ("LS9", "LS7", "LS3", "LS2"):
         if code in upper:
             return code
-    if "7.0" in upper or "7,0" in upper:
+    if re.search(r"(?<!\d)7[,.]0\s*(?:L|V8|V\s*8|$)", upper):
         return "LS7"
     if "KOMPRESSOR" in upper or "ZR1" in upper:
         return "LS9"
-    if "6.2" in upper or "6,2" in upper:
+    if re.search(r"(?<!\d)6[,.]2\s*(?:L|V8|V\s*8|$)", upper):
         return "LS3"
-    if "6.0" in upper or "6,0" in upper:
+    if re.search(r"(?<!\d)6[,.]0\s*(?:L|V8|V\s*8|$)", upper):
         return "LS2"
     return None
 
