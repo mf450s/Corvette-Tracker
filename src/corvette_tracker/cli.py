@@ -23,8 +23,8 @@ from .storage import TrackerStore
 
 DEFAULT_CONFIG = {
     "sources": {
-        "autoscout24": {"enabled": True, "url": AS24_URL, "urls": [AS24_URL, "https://www.autoscout24.de/lst?cat=ma16380mo19141%2Cma16380mo19140%2Cma16380mo20782%2Cma16380mo75462%2Cma16380mo19142%2Cma16380mo19143&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&damaged_listing=exclude&desc=0&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU&atype=C"]},
-        "kleinanzeigen": {"enabled": True, "url": KA_URL, "urls": [KA_URL, "https://www.kleinanzeigen.de/s-autos/corvette-c6/k0c216"]},
+        "autoscout24": {"enabled": True, "url": AS24_URL, "urls": [AS24_URL]},
+        "kleinanzeigen": {"enabled": True, "url": KA_URL, "urls": [KA_URL]},
         "autouncle": {"enabled": True, "url": AUTOUNCLE_URL, "urls": [AUTOUNCLE_URL, "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6"]},
         "classic_trader": {"enabled": True, "url": CLASSIC_TRADER_URL, "urls": [CLASSIC_TRADER_URL, "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette/c6"]},
         "mobile_de": {"enabled": True, "url": MOBILE_URL},

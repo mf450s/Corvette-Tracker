@@ -209,6 +209,35 @@ def test_fetch_kleinanzeigen_fills_missing_transmission_from_detail_page(monkeyp
     ]
 
 
+def test_fetch_kleinanzeigen_follows_pagination_and_dedupes(monkeypatch):
+    first_page = '''
+    <html><body>
+      <article class="aditem" data-adid="ka-1"><h2><a href="/s-anzeige/corvette-c6-one/1-216-1">Corvette C6 One</a></h2><p class="aditem-main--middle--price-shipping--price">30.000 €</p></article>
+      <article class="aditem" data-adid="ka-dup"><h2><a href="/s-anzeige/corvette-c6-dup/2-216-1">Corvette C6 Duplicate</a></h2><p class="aditem-main--middle--price-shipping--price">31.000 €</p></article>
+      <a href="/s-autos/sortierung:neuste/seite:2/corvette-c6/k0c216">2</a>
+    </body></html>
+    '''
+    second_page = '''
+    <html><body>
+      <article class="aditem" data-adid="ka-dup"><h2><a href="/s-anzeige/corvette-c6-dup/2-216-1">Corvette C6 Duplicate</a></h2><p class="aditem-main--middle--price-shipping--price">31.000 €</p></article>
+      <article class="aditem" data-adid="ka-3"><h2><a href="/s-anzeige/corvette-c6-three/3-216-1">Corvette C6 Three</a></h2><p class="aditem-main--middle--price-shipping--price">32.000 €</p></article>
+    </body></html>
+    '''
+
+    def fake_fetch_html(url):
+        if "/s-anzeige/" in url:
+            return "<html><body></body></html>"
+        if "seite:2" in url:
+            return second_page
+        return first_page
+
+    monkeypatch.setattr("corvette_tracker.sources.kleinanzeigen.fetch_html", fake_fetch_html)
+
+    listings = fetch_kleinanzeigen("https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216")
+
+    assert [listing.source_listing_id for listing in listings] == ["ka-1", "ka-dup", "ka-3"]
+
+
 def test_normalize_kleinanzeigen_image_url_prefers_detail_gallery_variant():
     url = "https://img.kleinanzeigen.de/api/v1/prod-ads/images/82/abc?rule=$_2.AUTO"
 

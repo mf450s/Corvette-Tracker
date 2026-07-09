@@ -8,6 +8,9 @@ from corvette_tracker.sources.classic_trader import DEFAULT_URL as CLASSIC_TRADE
 from corvette_tracker.sources.kleinanzeigen import DEFAULT_URL as KLEINANZEIGEN_URL
 from corvette_tracker.sources.mobile_de import DEFAULT_URL as MOBILE_DE_URL
 
+REQUESTED_AUTOSCOUT24_URL = "https://www.autoscout24.de/lst?cat=ma16380mo19141%2Cma16380mo19140%2Cma16380mo20782%2Cma16380mo75462%2Cma16380mo21061%2Cma16380mo74838%2Cma16380mo19142%2Cma16380mo19143&cy=D&damaged_listing=exclude&desc=0&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU&atype=C&search_id=nfg3gad0ed&source=homepage_search-mask"
+REQUESTED_KLEINANZEIGEN_URL = "https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216"
+
 EXPECTED_SOURCE_URLS = {
     "autoscout24": AUTOSCOUT24_URL,
     "kleinanzeigen": KLEINANZEIGEN_URL,
@@ -30,19 +33,20 @@ def test_default_config_uses_standard_source_urls():
         assert DEFAULT_CONFIG["sources"][source]["url"] == expected_url
 
 
-def test_standard_source_urls_are_broad_enough_to_catch_c6_listings_without_c6_in_title():
+def test_standard_source_urls_use_requested_marketplace_urls():
     autoscout_query = parse_qs(urlparse(AUTOSCOUT24_URL).query)
 
-    assert urlparse(AUTOSCOUT24_URL).path == "/lst/chevrolet/corvette"
-    assert "cat" not in autoscout_query
-    assert autoscout_query["fregfrom"] == ["2005"]
-    assert autoscout_query["fregto"] == ["2013"]
-    assert "/corvette-c6/" not in KLEINANZEIGEN_URL
-    assert "freetext=C6" not in AUTOUNCLE_URL
-    assert not CLASSIC_TRADER_URL.rstrip("/").endswith("/c6")
+    assert AUTOSCOUT24_URL == REQUESTED_AUTOSCOUT24_URL
+    assert KLEINANZEIGEN_URL == REQUESTED_KLEINANZEIGEN_URL
+    assert autoscout_query["cat"] == ["ma16380mo19141,ma16380mo19140,ma16380mo20782,ma16380mo75462,ma16380mo21061,ma16380mo74838,ma16380mo19142,ma16380mo19143"]
+    assert autoscout_query["cy"] == ["D"]
+    assert autoscout_query["damaged_listing"] == ["exclude"]
+    assert autoscout_query["ustate"] == ["N,U"]
+    assert "sortierung:neuste" in KLEINANZEIGEN_URL
+    assert "corvette-c6" in KLEINANZEIGEN_URL
 
 
-def test_active_config_uses_broadened_standard_source_urls():
+def test_active_config_uses_requested_standard_source_urls():
     with open("config.yaml", encoding="utf-8") as handle:
         config = yaml.safe_load(handle)
 
@@ -50,14 +54,12 @@ def test_active_config_uses_broadened_standard_source_urls():
         assert config["sources"][source]["url"] == expected_url
 
 
-def test_configs_can_crawl_multiple_urls_per_source():
+def test_configs_keep_primary_url_in_optional_url_list():
     with open("config.example.yaml", encoding="utf-8") as handle:
         config = yaml.safe_load(handle)
 
     assert config["sources"]["autoscout24"]["url"] in config["sources"]["autoscout24"]["urls"]
-    assert len(config["sources"]["autoscout24"]["urls"]) >= 2
     assert config["sources"]["kleinanzeigen"]["url"] in config["sources"]["kleinanzeigen"]["urls"]
-    assert len(config["sources"]["kleinanzeigen"]["urls"]) >= 2
 
 
 def test_collect_live_fetches_all_configured_urls_for_source(monkeypatch):
