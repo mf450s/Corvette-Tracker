@@ -79,14 +79,14 @@ def test_extract_trim_engine_power_body_style_and_registration():
     assert extract_trim(text) == "Z06"
     assert extract_engine(text) == "LS7"
     assert extract_power_hp(text) == 512
-    assert extract_body_style(text) == "Targa"
+    assert extract_body_style(text) == "Coupé"
     assert extract_first_registration(text) == "2008-05"
 
 
 def test_extract_body_style_detects_c6_body_variants():
     assert extract_body_style("Corvette C6 Cabrio Convertible") == "Cabrio"
     assert extract_body_style("Corvette C6 Coupe Targa removable roof") == "Targa"
-    assert extract_body_style("Corvette C6 Coupé") == "Targa"
+    assert extract_body_style("Corvette C6 Coupé") == "Coupé"
 
 
 def test_normalize_listing_applies_c6_inferences_from_engine_and_trim():
@@ -105,10 +105,10 @@ def test_normalize_listing_applies_c6_inferences_from_engine_and_trim():
     assert listing.engine == "LS7"
     assert listing.trim == "Z06"
     assert listing.transmission == "manual"
-    assert listing.body_style == "Targa"
+    assert listing.body_style == "Coupé"
     assert "LS7 → Z06" in listing.inference_notes
     assert "Z06 → Schalter" in listing.inference_notes
-    assert "Z06 → Targa" in listing.inference_notes
+    assert "Z06 → Coupé" in listing.inference_notes
 
 
 def test_normalize_listing_converts_coupe_to_targa_assumption():
@@ -143,9 +143,28 @@ def test_normalize_listing_flags_conflicts_against_c6_assumptions():
     assert listing is not None
     assert listing.trim == "Z06"
     assert listing.transmission == "manual"
-    assert listing.body_style == "Targa"
+    assert listing.body_style == "Coupé"
     assert "conflict_z06_transmission_automatic" in listing.conflict_flags
     assert "conflict_z06_body_cabrio" in listing.conflict_flags
+
+
+def test_normalize_listing_infers_zr1_as_coupe_not_targa():
+    listing = normalize_listing(
+        source="fixture",
+        source_listing_id="zr1-coupe",
+        url="https://example.test/c6-zr1",
+        title="Chevrolet Corvette C6 ZR1 LS9",
+        description="Kompressor, 647 PS",
+        price_text="109.900 €",
+        location_raw="Hamburg",
+        image_urls=[],
+    )
+
+    assert listing is not None
+    assert listing.trim == "ZR1"
+    assert listing.transmission == "manual"
+    assert listing.body_style == "Coupé"
+    assert "ZR1 → Coupé" in listing.inference_notes
 
 
 def test_risk_flags_separate_accident_damage_import_and_no_tuv():
@@ -282,7 +301,7 @@ def test_normalize_listing_returns_structured_c6_listing_with_score():
     assert listing.accident_status == "unfallfrei"
     assert listing.tuv_until == "2027-06"
     assert listing.transmission == "manual"
-    assert listing.body_style == "Targa"
+    assert listing.body_style == "Coupé"
     assert listing.power_hp == 512
     assert listing.image_urls == ["https://example.test/image.jpg"]
     assert listing.score > 0
