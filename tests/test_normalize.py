@@ -24,6 +24,26 @@ def test_extract_price_eur_avoids_partial_date_match():
     assert extract_price_eur("Bj.2005") is None
 
 
+def test_extract_price_eur_prefers_explicit_currency_over_earlier_bare_number():
+    # "123.000" (mileage) appears before "35.000 €" (price) — should return 35000
+    text = "Km-Stand 123.000, TÜV 09.2027, 35.000 € VB 123.000 km EZ 08/2010"
+    assert extract_price_eur(text) == 35000
+
+
+def test_extract_price_eur_skips_bare_number_next_to_km():
+    # "5000 km" is mileage context, not a price
+    assert extract_price_eur("ca 5000 km gefahren in der Zeit") is None
+    assert extract_price_eur("Verkaufe, 5000 km gelaufen, VB") is None
+    # But a €-marked price in the same text still works
+    assert extract_price_eur("ca 5000 km gefahren, 35000 € VB") == 35000
+
+
+def test_extract_price_eur_skips_bare_number_with_km_before():
+    # "Km-Stand 123.000" — km context before the number
+    assert extract_price_eur("Km-Stand 123.000") is None
+    assert extract_price_eur("km 123000") is None
+
+
 def test_extract_price_label_detects_vb_without_numeric_price():
     assert extract_price_label("VB") == "VB"
     assert extract_price_label("Preis VB") == "VB"
