@@ -18,6 +18,12 @@ def test_extract_price_eur_handles_german_format():
     assert extract_price_eur("Chevrolet Corvette C6 - 54.900 € VB") == 54900
 
 
+def test_extract_price_eur_avoids_partial_date_match():
+    assert extract_price_eur("Erstzulassung 08.2010") is None
+    assert extract_price_eur("EZ 12/2008") is None
+    assert extract_price_eur("Bj.2005") is None
+
+
 def test_extract_price_label_detects_vb_without_numeric_price():
     assert extract_price_label("VB") == "VB"
     assert extract_price_label("Preis VB") == "VB"
@@ -44,6 +50,13 @@ def test_normalize_listing_keeps_vb_price_label_without_fake_price():
 
 def test_extract_mileage_km_handles_dots_and_units():
     assert extract_mileage_km("68.000 km, gepflegt") == 68000
+
+
+def test_extract_mileage_km_avoids_year_like_numbers():
+    assert extract_mileage_km("2011 km") is None
+    assert extract_mileage_km("EZ 09.2008 km") is None
+    # But real mileage values (5+ digits) still work
+    assert extract_mileage_km("10000 km") == 10000
 
 
 def test_detect_c6_candidate_accepts_corvette_year_range_and_rejects_c7():
@@ -81,6 +94,21 @@ def test_extract_trim_engine_power_body_style_and_registration():
     assert extract_power_hp(text) == 512
     assert extract_body_style(text) == "Coupé"
     assert extract_first_registration(text) == "2008-05"
+
+
+def test_extract_trim_handles_zo6_letter_o():
+    assert extract_trim("Chevrolet Corvette C6 ZO6") == "Z06"
+    assert extract_trim("C6 ZO6 KW V3 NPP") == "Z06"
+
+
+def test_extract_trim_handles_zr1_with_space():
+    assert extract_trim("Corvette C6 ZR 1") == "ZR1"
+    assert extract_trim("C6 ZR1 LS9 Kompressor") == "ZR1"
+
+
+def test_extract_trim_handles_grand_sport_hyphen():
+    assert extract_trim("Corvette C6 Grand-Sport 6.2 V8") == "Grand Sport"
+    assert extract_trim("Corvette C6 Grand Sport LS3") == "Grand Sport"
 
 
 def test_extract_body_style_detects_c6_body_variants():

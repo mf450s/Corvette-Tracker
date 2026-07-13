@@ -183,6 +183,33 @@ def test_parse_kleinanzeigen_search_extracts_normalized_listings():
     assert listing.transmission == "manual"
 
 
+def test_parse_kleinanzeigen_search_handles_zo6_and_zr1_trim_variants():
+    html = '''
+    <html><body>
+    <article class="aditem" data-adid="zo6-1" data-href="/s-anzeige/corvette-c6-zo6/1-216-1">
+      <h2><a href="/s-anzeige/corvette-c6-zo6/1-216-1">Chevrolet Corvette C6 ZO6 LS7</a></h2>
+      <img src="https://img.example/zo6.jpg" />
+      <p class="aditem-main--middle--price-shipping--price">59.900 €</p>
+      <p class="aditem-main--middle--description">Z06, 513 PS, Manuell, Coupé</p>
+      <div class="aditem-main--top--left">Stuttgart</div>
+    </article>
+    <article class="aditem" data-adid="zr1-1" data-href="/s-anzeige/corvette-c6-zr-1/2-216-1">
+      <h2><a href="/s-anzeige/corvette-c6-zr-1/2-216-1">Corvette C6 ZR 1 LS9 Kompressor</a></h2>
+      <img src="https://img.example/zr1.jpg" />
+      <p class="aditem-main--middle--price-shipping--price">109.900 €</p>
+      <p class="aditem-main--middle--description">22.000 km, Kompressor, 647 PS</p>
+      <div class="aditem-main--top--left">Hamburg</div>
+    </article>
+    </body></html>
+    '''
+
+    listings = parse_kleinanzeigen_search(html, "https://www.kleinanzeigen.de/s-autos/corvette-c6/k0c216")
+
+    assert len(listings) == 2
+    assert listings[0].trim == "Z06"
+    assert listings[1].trim == "ZR1"
+
+
 def test_parse_kleinanzeigen_search_extracts_links_when_article_tree_is_unusable():
     html = '''
     <html><body>

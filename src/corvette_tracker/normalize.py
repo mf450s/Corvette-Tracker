@@ -6,10 +6,14 @@ from urllib.parse import urlsplit, urlunsplit
 
 from .models import Listing
 from .scoring import apply_score
+from .validation import apply_validation_flags
 
 C6_YEAR_RE = re.compile(r"\b(200[5-9]|201[0-3])\b")
-PRICE_RE = re.compile(r"(?<!\d)(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*(?:€|EUR|VB)?", re.I)
-KM_RE = re.compile(r"(?<!\d)(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*km\b", re.I)
+# Dotted prices (e.g. "54.900") with optional €/EUR/VB suffix.
+# (?!\d) prevents matching partial dates like "08.201" from "08.2010".
+PRICE_RE = re.compile(r"(?<!\d)(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*(?:€|EUR|VB)?(?!\d)", re.I)
+# \d{5,6} avoids matching years like "2011 km" as mileage (min realistic ~10000 km).
+KM_RE = re.compile(r"(?<!\d)(\d{1,3}(?:[.\s]\d{3})+|\d{5,6})\s*km\b", re.I)
 HP_RE = re.compile(r"\b(\d{3,4})\s*(?:PS|HP)\b", re.I)
 MONTH_YEAR_RE = re.compile(r"(?:EZ|Erstzulassung|HU|TÜV|TUV)?\s*(0?[1-9]|1[0-2])[./-](20\d{2}|19\d{2})", re.I)
 VIN_RE = re.compile(r"\b[1-9A-HJ-NPR-Z]{17}\b", re.I)
@@ -130,11 +134,11 @@ def estimate_power_from_engine(engine: str | None) -> int | None:
 
 def _extract_specific_trim(text: str) -> str | None:
     upper = (text or "").upper()
-    if "ZR1" in upper:
+    if "ZR1" in upper or "ZR 1" in upper:
         return "ZR1"
-    if "Z06" in upper or "Z 06" in upper:
+    if "Z06" in upper or "Z 06" in upper or "ZO6" in upper:
         return "Z06"
-    if "GRAND SPORT" in upper:
+    if "GRAND SPORT" in upper or "GRAND-SPORT" in upper:
         return "Grand Sport"
     if "427" in upper or "CENTENNIAL" in upper:
         return "Special Edition"
@@ -383,4 +387,5 @@ def normalize_listing(
         inference_notes=inference_notes,
         conflict_flags=conflict_flags,
     )
+    listing = apply_validation_flags(listing)
     return apply_score(listing)
