@@ -52,6 +52,7 @@ class Listing:
     change_type: str = "new"
     previous_price_eur: int | None = None
     cluster_id: str | None = None
+    validation_flags: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

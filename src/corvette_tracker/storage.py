@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
 from .models import Listing
+from .validation import sanity_check_against_previous
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS listings (
@@ -39,6 +41,8 @@ LISTING_FIELDS = {field.name for field in fields(Listing)}
 PROTECTED_OVERRIDE_FIELDS = {"id", "source", "source_listing_id", "url", "change_type", "previous_price_eur", "cluster_id"}
 EDITABLE_FIELDS = LISTING_FIELDS - PROTECTED_OVERRIDE_FIELDS
 
+log = logging.getLogger(__name__)
+
 
 class TrackerStore:
     def __init__(self, path: str | Path):
@@ -62,38 +66,61 @@ class TrackerStore:
         return Listing(**data)
 
     def upsert_listings(self, listings: list[Listing]) -> list[Listing]:
+        # Pre-load all existing listings for historical comparison
+        try:
+            existing = self.list_active()
+        except Exception:
+            existing = []
+
         result: list[Listing] = []
         for source_listing in listings:
-            listing = self._apply_overrides(source_listing)
-            previous = self.conn.execute("SELECT payload_json, price_eur, mileage_km FROM listings WHERE id = ?", (listing.id,)).fetchone()
-            if previous is None:
-                listing.change_type = "new"
-            elif previous["price_eur"] != listing.price_eur:
-                listing.change_type = "price_change"
-                listing.previous_price_eur = previous["price_eur"]
-            elif previous["mileage_km"] != listing.mileage_km:
-                listing.change_type = "metadata_change"
-            else:
-                listing.change_type = "unchanged"
+            try:
+                listing = self._apply_overrides(source_listing)
 
-            payload = json.dumps(listing.to_dict(), ensure_ascii=False, sort_keys=True)
-            self.conn.execute(
-                """
-                INSERT INTO listings (id, payload_json, price_eur, mileage_km, last_seen_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(id) DO UPDATE SET
-                  payload_json=excluded.payload_json,
-                  price_eur=excluded.price_eur,
-                  mileage_km=excluded.mileage_km,
-                  last_seen_at=CURRENT_TIMESTAMP
-                """,
-                (listing.id, payload, listing.price_eur, listing.mileage_km),
-            )
-            self.conn.execute(
-                "INSERT INTO snapshots (listing_id, price_eur, mileage_km, change_type, payload_json) VALUES (?, ?, ?, ?, ?)",
-                (listing.id, listing.price_eur, listing.mileage_km, listing.change_type, payload),
-            )
-            result.append(listing)
+                # Historical outlier check against existing data
+                historical_flags = sanity_check_against_previous(listing, existing)
+                if historical_flags:
+                    listing.validation_flags = [
+                        *listing.validation_flags,
+                        *historical_flags,
+                    ]
+
+                previous = self.conn.execute(
+                    "SELECT payload_json, price_eur, mileage_km FROM listings WHERE id = ?",
+                    (listing.id,),
+                ).fetchone()
+                if previous is None:
+                    listing.change_type = "new"
+                elif previous["price_eur"] != listing.price_eur:
+                    listing.change_type = "price_change"
+                    listing.previous_price_eur = previous["price_eur"]
+                elif previous["mileage_km"] != listing.mileage_km:
+                    listing.change_type = "metadata_change"
+                else:
+                    listing.change_type = "unchanged"
+
+                payload = json.dumps(listing.to_dict(), ensure_ascii=False, sort_keys=True)
+                self.conn.execute(
+                    """
+                    INSERT INTO listings (id, payload_json, price_eur, mileage_km, last_seen_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                      payload_json=excluded.payload_json,
+                      price_eur=excluded.price_eur,
+                      mileage_km=excluded.mileage_km,
+                      last_seen_at=CURRENT_TIMESTAMP
+                    """,
+                    (listing.id, payload, listing.price_eur, listing.mileage_km),
+                )
+                self.conn.execute(
+                    "INSERT INTO snapshots (listing_id, price_eur, mileage_km, change_type, payload_json) VALUES (?, ?, ?, ?, ?)",
+                    (listing.id, listing.price_eur, listing.mileage_km, listing.change_type, payload),
+                )
+                result.append(listing)
+            except Exception as exc:
+                log.warning(
+                    "Skipping listing %s: %s", getattr(source_listing, "url", "?"), exc
+                )
         self.conn.commit()
         return result
 

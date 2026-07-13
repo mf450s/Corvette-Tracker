@@ -37,11 +37,25 @@ def _to_int(value: str) -> int | None:
 
 
 def extract_price_eur(text: str) -> int | None:
-    for match in PRICE_RE.finditer(text or ""):
+    if not text:
+        return None
+    first_bare: int | None = None
+    for match in PRICE_RE.finditer(text):
         value = _to_int(match.group(1))
-        if value and 5_000 <= value <= 500_000:
-            return value
-    return None
+        if not value or not (5_000 <= value <= 500_000):
+            continue
+        # Check if this match has an explicit currency marker (€/EUR) right after the number
+        after_group1 = text[match.end(1):match.end(0)].strip()
+        if after_group1:
+            return value  # Explicit €/EUR/VB → unambiguous price
+        # Bare number: skip if "km" appears nearby (mileage context, not price)
+        before = text[max(0, match.start() - 20):match.start()].lower()
+        after = text[match.end():match.end() + 15].lower()
+        if re.search(r'\bkm\b', before) or re.search(r'\bkm\b', after):
+            continue
+        if first_bare is None:
+            first_bare = value
+    return first_bare
 
 
 def extract_price_label(text: str) -> str | None:
