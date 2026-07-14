@@ -11,6 +11,24 @@ class FetchError(RuntimeError):
     pass
 
 
+class CloudflareBlocked(FetchError):
+    """Raised when the target site is behind a Cloudflare challenge that
+    cannot be bypassed with a plain HTTP request."""
+
+    pass
+
+
+def is_cloudflare_challenge(html: str) -> bool:
+    """Detect if the response is a Cloudflare JS challenge page
+    (no real content, just a captcha/browser-check placeholder)."""
+    return bool(
+        html
+        and "Just a moment" in html[:500]
+        and "challenges.cloudflare.com" in html[:2000]
+        and "cf_chl_opt" in html
+    )
+
+
 def fetch_html(url: str, *, timeout: int = 30, retries: int = 2) -> str:
     last_error: Exception | None = None
     for attempt in range(retries + 1):
@@ -26,7 +44,10 @@ def fetch_html(url: str, *, timeout: int = 30, retries: int = 2) -> str:
             with urlopen(request, timeout=timeout) as response:
                 raw = response.read()
                 charset = response.headers.get_content_charset() or "utf-8"
-                return raw.decode(charset, errors="replace")
+                body = raw.decode(charset, errors="replace")
+                if is_cloudflare_challenge(body):
+                    raise CloudflareBlocked(f"cloudflare challenge at {url}")
+                return body
         except (HTTPError, URLError, TimeoutError) as exc:
             last_error = exc
             if attempt < retries:
