@@ -18,6 +18,20 @@ class CloudflareBlocked(FetchError):
     pass
 
 
+def _is_cloudflare_403(error: HTTPError) -> bool:
+    """Detect if an HTTP 403 error is a Cloudflare block (403 + known CF headers/challenge page)."""
+    if error.code != 403:
+        return False
+    server = error.headers.get("Server", "")
+    body = error.read().decode("utf-8", errors="replace")[:2000] if error.fp else ""
+    if "cloudflare" in server.lower() or "cloudflare" in body.lower():
+        return True
+    return bool(
+        "Just a moment" in body
+        and ("cf_chl_opt" in body or "challenges.cloudflare.com" in body)
+    )
+
+
 def is_cloudflare_challenge(html: str) -> bool:
     """Detect if the response is a Cloudflare JS challenge page
     (no real content, just a captcha/browser-check placeholder)."""
@@ -48,7 +62,13 @@ def fetch_html(url: str, *, timeout: int = 30, retries: int = 2) -> str:
                 if is_cloudflare_challenge(body):
                     raise CloudflareBlocked(f"cloudflare challenge at {url}")
                 return body
-        except (HTTPError, URLError, TimeoutError) as exc:
+        except HTTPError as exc:
+            if _is_cloudflare_403(exc):
+                raise CloudflareBlocked(f"cloudflare block (HTTP 403) at {url}")
+            last_error = exc
+            if attempt < retries:
+                time.sleep(1 + attempt)
+        except (URLError, TimeoutError) as exc:
             last_error = exc
             if attempt < retries:
                 time.sleep(1 + attempt)
