@@ -34,14 +34,29 @@ KLEINANZEIGEN_HTML = '''
 </body></html>
 '''
 
-AUTOUNCLE_HTML = '''
+AUTOUNCLE_HTML = '''\
 <html><body>
-<a href="/de/d/222-c6-corvette">
-  Gebraucht (2008) Chevrolet Corvette C6 LS3 437 PS | Seltenes Fahrzeug
-  Mär 2008 68.000 km 6.2L Benzin Coupé Schaltgetriebe 437 PS (321 kW)
-  Details 54.900 € München
-</a>
-<img src="https://autouncle-public.s3.eu-west-1.amazonaws.com/de/car_images/c6.webp" />
+<article>
+  <div class="_AQ3hX">
+    <div class="_v1SHB">
+      <img src="https://autouncle-public.s3.eu-west-1.amazonaws.com/de/car_images/c6.webp" />
+    </div>
+  </div>
+  <a class="_p9jqN" href="/de/d/222-c6-corvette">
+    <h3>Gebraucht (2008) Chevrolet Corvette C6 LS3 437 PS | Seltenes Fahrzeug</h3>
+    <ul>
+      <li>Mär 2008</li>
+      <li>68.000 km</li>
+      <li>6.2L Benzin</li>
+      <li>Coupé</li>
+      <li>Schaltgetriebe</li>
+      <li>437 PS (321 kW)</li>
+    </ul>
+  </a>
+  <div class="_eMl_E">
+    <div class="_i2QOc">54.900&nbsp;€</div>
+  </div>
+</article>
 </body></html>
 '''
 
@@ -142,14 +157,34 @@ def test_parse_autouncle_search_uses_listing_scoped_images_not_global_page_image
     html = '''
     <html><body>
     <img src="https://www.autouncle.de/assets/autouncle-logo.webp" />
-    <a href="/de/d/217293039-gebraucht-2007-chevrolet-corvette-lt-404-ps">
-      <img src="https://images.autouncle.com/de/car_images/medium_real-2007-corvette.webp" />
-      Gebraucht 2007 Chevrolet Corvette C6 LT 404 PS 58.000 km 39.900 €
-    </a>
-    <a href="/de/d/148078450-gebraucht-2008-chevrolet-corvette">
-      <img src="https://images.autouncle.com/de/car_images/medium_real-2008-corvette.webp" />
-      Gebraucht 2008 Chevrolet Corvette C6 404 PS 68.000 km 42.900 €
-    </a>
+    <article>
+      <div class="_AQ3hX">
+        <div class="_v1SHB">
+          <img src="https://images.autouncle.com/de/car_images/medium_real-2007-corvette.webp" />
+        </div>
+      </div>
+      <a class="_p9jqN" href="/de/d/217293039-gebraucht-2007-chevrolet-corvette-lt-404-ps">
+        <h3>Gebraucht 2007 Chevrolet Corvette C6 LT 404 PS</h3>
+        <ul><li>58.000 km</li></ul>
+      </a>
+      <div class="_eMl_E">
+        <div class="_i2QOc">39.900&nbsp;€</div>
+      </div>
+    </article>
+    <article>
+      <div class="_AQ3hX">
+        <div class="_v1SHB">
+          <img src="https://images.autouncle.com/de/car_images/medium_real-2008-corvette.webp" />
+        </div>
+      </div>
+      <a class="_p9jqN" href="/de/d/148078450-gebraucht-2008-chevrolet-corvette">
+        <h3>Gebraucht 2008 Chevrolet Corvette C6 404 PS</h3>
+        <ul><li>68.000 km</li></ul>
+      </a>
+      <div class="_eMl_E">
+        <div class="_i2QOc">42.900&nbsp;€</div>
+      </div>
+    </article>
     </body></html>
     '''
 
