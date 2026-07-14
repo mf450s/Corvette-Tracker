@@ -17,24 +17,6 @@ def _text(node) -> str:
     return " ".join(node.get_text(" ", strip=True).split()) if node else ""
 
 
-def _page_images(soup: BeautifulSoup, base_url: str) -> list[str]:
-    urls: list[str] = []
-    for img in soup.select("img"):
-        src = img.get("src") or img.get("data-src")
-        if src and not src.startswith("data:") and ("car_images" in src or "autouncle" in src):
-            urls.append(urljoin(base_url, src))
-    return list(dict.fromkeys(urls))
-
-
-def _listing_images(node, base_url: str) -> list[str]:
-    urls: list[str] = []
-    for img in node.select("img"):
-        src = img.get("src") or img.get("data-src")
-        if src and not src.startswith("data:") and "car_images" in src:
-            urls.append(urljoin(base_url, src))
-    return list(dict.fromkeys(urls))
-
-
 def _price_text(text: str) -> str:
     match = re.search(r"(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*€", text)
     return match.group(0) if match else text
@@ -42,10 +24,13 @@ def _price_text(text: str) -> str:
 
 def parse_autouncle_search(html: str, base_url: str = DEFAULT_URL) -> list[Listing]:
     soup = BeautifulSoup(html, "html.parser")
-    page_images = _page_images(soup, base_url)
     listings: list[Listing] = []
     seen_urls: set[str] = set()
-    for index, link in enumerate(soup.select('a[href*="/de/d/"]')):
+
+    for article in soup.select("article"):
+        link = article.select_one('a[href*="/de/d/"]')
+        if not link:
+            continue
         href = link.get("href")
         if not href:
             continue
@@ -53,19 +38,34 @@ def parse_autouncle_search(html: str, base_url: str = DEFAULT_URL) -> list[Listi
         if url in seen_urls:
             continue
         seen_urls.add(url)
+
+        # Title + specs from the <a> tag
         text = _text(link)
         if "corvette" not in text.lower():
             continue
-        title = text.split("|")[0].replace("Gebraucht", "").strip(" ()") or "Chevrolet Corvette"
+        title = text.split("|")[0].replace("Gebraucht", "").strip(" ()\"") or "Chevrolet Corvette"
+
+        # Price from the dedicated price element outside the <a> tag
+        price_el = article.select_one("._i2QOc")
+        price_text = _text(price_el) if price_el else ""
+
+        # Image from the dedicated image area outside the <a> tag
+        image_urls: list[str] = []
+        img = article.select_one("._v1SHB img")
+        if img:
+            src = img.get("src") or img.get("data-src")
+            if src and not src.startswith("data:"):
+                image_urls.append(urljoin(base_url, src))
+
         listing = normalize_listing(
             source=SOURCE,
             source_listing_id=href.rstrip("/").split("/")[-1],
             url=url,
             title=title,
             description=text,
-            price_text=_price_text(text),
+            price_text=price_text,
             location_raw="",
-            image_urls=_listing_images(link, base_url) or page_images[index:index + 1] or page_images[:1],
+            image_urls=image_urls,
         )
         if listing:
             listings.append(listing)
