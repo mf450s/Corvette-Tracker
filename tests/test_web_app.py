@@ -191,7 +191,8 @@ def test_web_shell_exposes_all_listing_fields_and_inline_editors():
 
     assert "data-field-registry" in html
     assert "renderAllFields" in html
-    assert "renderInlineEditor" in html
+    assert "inlineEditorValue" in html
+    assert "saveAllFields" in html
     assert "renderDetailPage" in html
     assert "renderOverviewCard" in html
     assert "Verlauf" in html

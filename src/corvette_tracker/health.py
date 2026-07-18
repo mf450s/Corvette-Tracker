@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 import urllib.error
 import urllib.request
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 from .storage import TrackerStore
 
@@ -17,39 +20,140 @@ CACHE_TTL_SECONDS = 300
 # HTTP request timeout per URL check
 CHECK_TIMEOUT = 10
 
-# Max redirects to follow (0 = don't follow any, just report the redirect status)
-FOLLOW_REDIRECTS = True
+# Minimum delay in seconds between requests to the same domain
+DOMAIN_DELAY_SECONDS = 1.0
+
+# Phrases that indicate a listing is no longer available (checked in body text)
+NOT_FOUND_PATTERNS: list[re.Pattern] = [
+    re.compile(r"anzeige\s+(?:wurde\s+)?(?:leider\s+)?nicht\s+gefunden", re.I),
+    re.compile(r"die\s+gesuchte\s+anzeige\s+ist\s+nicht\s+mehr\s+vorhanden", re.I),
+    re.compile(r"seite\s+nicht\s+gefunden", re.I),
+    re.compile(r"dieses\s+(?:angebot|inserat|objekt)\s+(?:ist\s+)?nicht\s+mehr\s+(?:vorhanden|verfügbar|verfuegbar)", re.I),
+    re.compile(r"listing\s+(?:is\s+)?(?:no\s+longer\s+)?not\s+found", re.I),
+    re.compile(r"offer\s+(?:is\s+)?(?:no\s+longer\s+)?(?:available|found)", re.I),
+    re.compile(r"page\s+not\s+found", re.I),
+    re.compile(r"404\s+not\s+found", re.I),
+    re.compile(r"dieses\s+objekt\s+wurde\s+entfernt", re.I),
+    re.compile(r"this\s+(?:ad|listing)\s+(?:has\s+been\s+)?removed", re.I),
+]
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Redirect handler that does NOT follow redirects.
+
+    This is intentional for health checks: a deleted Kleinanzeigen listing
+    redirects (302 -> homepage -> 200). We catch the initial redirect code
+    and report the listing as offline instead of following through.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        log.debug(
+            "Redirect detected for %s -> %s (HTTP %s) — not following",
+            req.full_url, newurl, code,
+        )
+        return None  # Don't follow redirects
+
+
+def _is_not_found_body(body: str) -> bool:
+    """Check response body for patterns indicating a listing is gone.
+
+    Some sites return HTTP 200 with a 'not found' message instead of 404.
+    """
+    for pattern in NOT_FOUND_PATTERNS:
+        if pattern.search(body):
+            return True
+    return False
+
+
+# Per-domain rate limiting state
+_last_request_at: dict[str, float] = {}
+
+
+def _domain_delay(url: str) -> None:
+    """Enforce a minimum delay between requests to the same domain."""
+    domain = urlparse(url).netloc
+    last = _last_request_at.get(domain)
+    if last is not None:
+        elapsed = time.time() - last
+        if elapsed < DOMAIN_DELAY_SECONDS:
+            sleep_time = DOMAIN_DELAY_SECONDS - elapsed
+            log.debug("Rate limit: sleeping %.2fs for %s", sleep_time, domain)
+            time.sleep(sleep_time)
+    _last_request_at[domain] = time.time()
 
 
 def _check_single_url(url: str) -> tuple[int | None, str | None]:
-    """Check whether a single URL is reachable.
+    """Check whether a single URL is reachable and still points to a listing.
 
     Tries HEAD first, falls back to GET if the server rejects HEAD.
+    Does NOT follow redirects — a redirect (3xx) means the listing is gone.
+    Also checks response body for common 'not found' indicators.
+
     Returns (http_status, error_message).
-    - (200, None) on success
-    - (status_code, None) on non-2xx
-    - (None, "error message") on connection failure / timeout
+    - (200, None) on success (listing is online)
+    - (status_code, None) on non-2xx, including redirects (listing offline)
+    - (None, \"error message\") on connection failure / timeout
     """
     if not url:
         return None, "empty URL"
 
+    _domain_delay(url)
+
     def _do_request(method: str):
         req = urllib.request.Request(url, method=method)
-        opener = urllib.request.build_opener(_RedirectHandler())
+        opener = urllib.request.build_opener(_NoRedirectHandler())
         return opener.open(req, timeout=CHECK_TIMEOUT)
 
     for method in ("HEAD", "GET"):
         try:
             with _do_request(method) as response:
                 status = response.status
-                if 200 <= status < 300:
+
+                # Redirect (3xx) — listing URL no longer points to the listing
+                if 300 <= status < 400:
+                    log.info(
+                        "Listing %s returned HTTP %s (redirect) — marking offline",
+                        url, status,
+                    )
                     return status, None
+
+                # Non-2xx status — offline
+                if status < 200 or status >= 300:
+                    return status, None
+
+                # 2xx from HEAD: URL is reachable, but we need GET to
+                # check the body for 'not found' content. Fall through.
+                if method == "HEAD":
+                    continue
+
+                # 2xx from GET: check response body for 'not found' indicators
+                raw_body = response.read(65536)  # 64KB max
+                try:
+                    charset = response.headers.get_content_charset() or "utf-8"
+                    body = raw_body.decode(charset, errors="replace")
+                except Exception:
+                    body = raw_body.decode("utf-8", errors="replace")
+
+                if _is_not_found_body(body):
+                    log.info(
+                        "Listing %s returned HTTP 200 but body indicates 'not found' — marking offline",
+                        url,
+                    )
+                    return 410, "not found body"  # 410 Gone semantics
+                if len(raw_body) >= 65536:
+                    log.debug(
+                        "Body truncated for %s (>64KB), content check limited",
+                        url,
+                    )
+
                 return status, None
+
         except urllib.error.HTTPError as exc:
-            # HEAD method rejected (405) → try GET
+            # HEAD method rejected (405) -> try GET
             if exc.code == 405 and method == "HEAD":
                 continue
             # Other HTTP errors: report the status code
+            log.debug("HTTP %s for %s (%s)", exc.code, url, method)
             return exc.code, None
         except urllib.error.URLError:
             if method == "HEAD":
@@ -63,27 +167,18 @@ def _check_single_url(url: str) -> tuple[int | None, str | None]:
     return None, "all methods failed"
 
 
-class _RedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Custom redirect handler that follows up to 5 redirects, then returns the final status."""
-
-    max_redirections = 5
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        """Follow redirects, log the redirect."""
-        log.debug("Redirect %s -> %s (status %s)", req.full_url, newurl, code)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
 def check_stale_offers(
     store: TrackerStore,
     *,
     force: bool = False,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Check all listings that haven't been checked in CACHE_TTL_SECONDS.
 
     Args:
         store: TrackerStore instance.
         force: If True, re-check all listings regardless of cache age.
+        dry_run: If True, perform checks but do NOT write results to the DB.
 
     Returns:
         Summary dict with counts of online/offline/failed checks.
@@ -123,20 +218,25 @@ def check_stale_offers(
         http_status, error = _check_single_url(listing.url)
         is_online = http_status is not None and 200 <= http_status < 300
 
-        store.update_online_status(
-            listing.id,
-            is_online=is_online,
-            http_status=http_status,
-            error_message=error,
-        )
+        if not dry_run:
+            store.update_online_status(
+                listing.id,
+                is_online=is_online,
+                http_status=http_status,
+                error_message=error,
+            )
 
         checked += 1
         if is_online:
             online_count += 1
-        elif error:
-            failed_count += 1
-        else:
+        elif http_status is not None:
+            # Got a valid HTTP response that indicates offline (redirect, 4xx,
+            # or content-based detection). The error_message is informational,
+            # not a network failure.
             offline_count += 1
+        else:
+            # Connection error, timeout, or other network failure
+            failed_count += 1
 
         results.append({
             "listing_id": listing.id,
@@ -155,6 +255,7 @@ def check_stale_offers(
         "total": len(listings),
         "checked_at": now_iso,
         "results": results,
+        "dry_run": dry_run,
     }
 
 
