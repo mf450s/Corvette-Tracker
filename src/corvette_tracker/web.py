@@ -587,15 +587,30 @@ def _start_scheduler(app: TrackerWebApp, interval_seconds: int) -> None:
 def _start_health_scheduler(app: TrackerWebApp, interval_seconds: int) -> None:
     """Background thread that periodically checks offer URLs for online status."""
 
-    def loop() -> None:
-        while True:
-            time.sleep(interval_seconds)
+    _RETRIABLE_SQLITE_ERRORS = ("database is locked", "is not unique",
+                                "UNIQUE constraint", "no such table")
+
+    def _robust_check() -> None:
+        for attempt in range(3):
             try:
                 summary = check_stale_offers(app.store)
                 if summary["checked"] > 0:
-                    print(f"Health check: {summary['checked']} checked, {summary['online']} online, {summary['offline']} offline, {summary['failed']} failed")
+                    print(f"Health check: {summary['checked']} checked, {summary['online']} online, "
+                          f"{summary['offline']} offline, {summary['failed']} failed")
+                return
             except Exception as exc:
-                print(f"Scheduled health check failed: {exc}")
+                msg = str(exc)
+                if any(e in msg for e in _RETRIABLE_SQLITE_ERRORS) and attempt < 2:
+                    time.sleep(2 ** attempt)
+                    continue
+                import traceback
+                traceback.print_exc()
+                print(f"Scheduled health check failed (attempt {attempt + 1}): {exc}")
+
+    def loop() -> None:
+        while True:
+            time.sleep(interval_seconds)
+            _robust_check()
 
     threading.Thread(target=loop, name="corvette-tracker-health-scheduler", daemon=True).start()
 
