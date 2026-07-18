@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlparse
 import yaml
 
 from .feed import build_feed_payload, format_eur, format_km, write_exports
+from .health import CACHE_TTL_SECONDS, check_stale_offers, get_cached_status
 from .models import Listing
 from .scoring import apply_score, apply_scores, merge_scoring_config
 from .storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, TrackerStore
@@ -178,6 +179,11 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/status":
             self._send_json({"last_run": self.tracker_app.last_run_status(), "last_crawl_at": self.tracker_app.last_crawl_at(), "total_active": len(self.tracker_app.store.list_active())})
             return
+        if path == "/api/offers/status":
+            store = self.tracker_app.store
+            status_data = get_cached_status(store)
+            self._send_json(status_data)
+            return
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
@@ -194,6 +200,10 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
                 return
             self._send_json({"scoring": scoring})
+            return
+        if path == "/api/offers/check":
+            summary = check_stale_offers(self.tracker_app.store, force=True)
+            self._send_json(summary)
             return
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
@@ -287,6 +297,13 @@ def render_app_shell() -> str:
     dl {{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }} dl div {{ border:1px solid var(--line); border-radius:12px; padding:8px; }} dt {{ color:var(--muted); font-size:12px; }} dd {{ margin:3px 0 0; font-weight:700; overflow-wrap:anywhere; }}
     form {{ display:grid; gap:8px; margin-top:14px; grid-template-columns:1fr 1fr auto; }} .score-form {{ grid-template-columns:repeat(5,minmax(120px,1fr)); align-items:end; }} .score-form label {{ display:grid; gap:6px; color:var(--muted); font-size:12px; }} .field-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:8px; margin-top:12px; }} .field-editor {{ border:1px solid var(--line); border-radius:12px; padding:8px; background:rgba(0,0,0,.16); }} .field-editor label,.readonly-field span {{ display:block; color:var(--muted); font-size:12px; margin-bottom:5px; }} .field-editor form {{ grid-template-columns:minmax(0,1fr) auto; margin-top:0; }} .field-editor textarea {{ min-height:76px; resize:vertical; }} select,input,textarea {{ min-width:0; border:1px solid var(--line); border-radius:10px; padding:10px; background:#09090b; color:var(--text); }}
     .status {{ min-height:1.4em; }} .crawl-meta {{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px; color:var(--muted); }} .crawl-meta strong {{ color:var(--text); }}
+    .status-dot {{ display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; flex-shrink:0; }}
+    .status-dot.online {{ background:#22c55e; box-shadow:0 0 6px rgba(34,197,94,.5); }}
+    .status-dot.offline {{ background:#ef4444; box-shadow:0 0 6px rgba(239,68,68,.5); }}
+    .status-dot.unknown {{ background:#6b7280; }}
+    .meta-line {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }}
+    .filter-input {{ min-width:160px; }}
+    .ez-range {{ display:flex; gap:6px; align-items:center; }} .ez-range input {{ width:80px; }}
   </style>
 </head>
 <body>
@@ -297,10 +314,13 @@ def render_app_shell() -> str:
     <div class="toolbar"><button id="run">Jetzt crawlen</button><span id="status" class="status muted"></span></div>
     <p class="crawl-meta">Letzter Crawl: <strong id="last-crawl">noch nie</strong></p>
   </header>
-  <main class="wrap"><section class="panel"><h2>Scoring konfigurieren</h2><p class="muted">Standard: Schalter sehr wichtig, kein Cabrio wichtig, kein LS2 wichtig, Trim mittel. Werte werden in config.yaml gespeichert.</p><form id="scoring-form" class="score-form"><label>Schalter<input name="manual_transmission" type="number" min="0" max="100" data-score-weight="manual_transmission"></label><label>Kein Cabrio<input name="non_convertible" type="number" min="0" max="100" data-score-weight="non_convertible"></label><label>Kein LS2<input name="non_ls2" type="number" min="0" max="100" data-score-weight="non_ls2"></label><label>Trim<input name="preferred_trim" type="number" min="0" max="100" data-score-weight="preferred_trim"></label><label>Trims<input name="preferred_trims" placeholder="Grand Sport, Z06, ZR1"></label><button>Scoring speichern</button></form></section><section class="panel list-toolbar"><div><h2>Listings</h2><p class="muted">Sortierung basiert auf dem aktuellen Scoring.</p></div><label class="muted">Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option></select></label></section><div id="listings" class="grid"></div></main>
+  <main class="wrap"><section class="panel"><h2>Scoring konfigurieren</h2><p class="muted">Standard: Schalter sehr wichtig, kein Cabrio wichtig, kein LS2 wichtig, Trim mittel. Werte werden in config.yaml gespeichert.</p><form id="scoring-form" class="score-form"><label>Schalter<input name="manual_transmission" type="number" min="0" max="100" data-score-weight="manual_transmission"></label><label>Kein Cabrio<input name="non_convertible" type="number" min="0" max="100" data-score-weight="non_convertible"></label><label>Kein LS2<input name="non_ls2" type="number" min="0" max="100" data-score-weight="non_ls2"></label><label>Trim<input name="preferred_trim" type="number" min="0" max="100" data-score-weight="preferred_trim"></label><label>Trims<input name="preferred_trims" placeholder="Grand Sport, Z06, ZR1"></label><button>Scoring speichern</button></form></section><section class="panel list-toolbar"><div><h2>Listings</h2><p class="muted">Filter und Sortierung — Status wird live vom Backend geholt.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label class="muted">Suche<input id="text-search" class="filter-input" type="text" placeholder="Titel, Beschreibung&hellip;"></label><label class="muted">Status<select id="status-filter"><option value="all">Alle</option><option value="online">Online</option><option value="offline">Offline</option></select></label><label class="muted">EZ von<input id="ez-from" type="text" placeholder="z.B. 2008" maxlength="4"></label><label class="muted">bis<input id="ez-to" type="text" placeholder="z.B. 2013" maxlength="4"></label><label class="muted">Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="status-online">Online zuerst</option><option value="status-offline">Offline zuerst</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option><option value="mileage-desc">km hoch</option><option value="ez-asc">EZ alt&rarr;neu</option><option value="ez-desc">EZ neu&rarr;alt</option><option value="source">Quelle</option></select></label></div></section><p id="visible-count" class="muted" style="margin-bottom:8px"></p><div id="listings" class="grid"></div></main>
 <script data-field-registry="{field_registry_attr}">
 const fieldRegistry = {field_registry_js};
 let currentListings = [];
+let healthStatusMap = {{}};
+function getStatus(id) {{ return healthStatusMap[id] ?? 'unknown'; }}
+function statusLabel(s) {{ return s === 'online' ? 'Online' : s === 'offline' ? 'Offline' : 'Unbekannt'; }}
 function esc(value) {{ return String(value ?? '').replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}}[c])); }}
 function fmtEur(value) {{ return value == null ? 'k.A.' : Number(value).toLocaleString('de-DE') + ' €'; }}
 function fmtKm(value) {{ return value == null ? 'k.A.' : Number(value).toLocaleString('de-DE') + ' km'; }}
@@ -345,20 +365,43 @@ async function loadStatus() {{
   const payload = await response.json();
   updateLastCrawl(payload.last_crawl_at);
 }}
+async function loadHealthStatus() {{
+  try {{
+    const response = await fetch('/api/offers/status');
+    const payload = await response.json();
+    const map = {{}};
+    (payload.offers || []).forEach(o => {{ map[o.listing_id] = o.is_online ? 'online' : 'offline'; }});
+    healthStatusMap = map;
+  }} catch (e) {{
+    // silently ignore — show all as unknown
+  }}
+  renderListings();
+}}
 async function loadListings() {{
   const response = await fetch('/api/listings');
   const payload = await response.json();
   currentListings = payload.listings || [];
   updateLastCrawl(payload.last_crawl_at);
   document.getElementById('status').textContent = `${{currentListings.length}} aktive Treffer`;
+  await loadHealthStatus();
   renderListings();
 }}
 function sortListings(listings) {{
   const order = document.getElementById('listing-sort').value;
   return [...listings].sort((a, b) => {{
+    const sa = getStatus(a.id), sb = getStatus(b.id);
+    const sta = sa === 'online' ? 1 : sa === 'offline' ? 2 : 3;
+    const stb = sb === 'online' ? 1 : sb === 'offline' ? 2 : 3;
+    if (order === 'status-online') return sta - stb;
+    if (order === 'status-offline') return stb - sta;
     if (order === 'score-asc') return Number(a.score || 0) - Number(b.score || 0);
     if (order === 'price-asc') return Number(a.price_eur || 999999999) - Number(b.price_eur || 999999999);
     if (order === 'price-desc') return Number(b.price_eur || 0) - Number(a.price_eur || 0);
+    if (order === 'mileage-asc') return Number(a.mileage_km || 999999999) - Number(b.mileage_km || 999999999);
+    if (order === 'mileage-desc') return Number(b.mileage_km || 0) - Number(a.mileage_km || 0);
+    if (order === 'ez-asc') return (a.first_registration || 'ZZZZ').localeCompare(b.first_registration || 'ZZZZ');
+    if (order === 'ez-desc') return (b.first_registration || '').localeCompare(a.first_registration || '');
+    if (order === 'source') return (a.source || '').localeCompare(b.source || '');
     return Number(b.score || 0) - Number(a.score || 0);
   }});
 }}
@@ -370,10 +413,11 @@ function renderOverviewCard(item) {{
   const image = (item.image_urls || [])[0];
   const detailUrl = '/car/' + encodeURIComponent(item.id);
   const offerUrl = item.url || detailUrl;
-  return `<article class="card" data-overview-card data-id="${{esc(item.id)}}">
+  const st = getStatus(item.id);
+  return `<article class="card" data-overview-card data-id="${{esc(item.id)}}" data-status="${{st}}">
     <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{esc(item.score ?? 0)}}%</span>${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
     <div class="body">
-      <p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p>
+      <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}} &middot; Score ${{esc(item.score)}}</p>
       <h2><a class="title-link" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer">${{esc(item.title)}}</a></h2>
       <p class="price">${{fmtEur(item.price_eur)}}</p>
       <dl class="overview-specs">
@@ -419,8 +463,40 @@ async function renderDetailPage(item) {{
 function renderOverviewPage() {{
   const grid = document.getElementById('listings');
   grid.classList.add('grid');
-  const sorted = sortListings(currentListings);
-  grid.innerHTML = sorted.map(item => renderOverviewCard(item)).join('') || '<p class="muted">Noch keine Listings. Starte einen Crawl.</p>';
+  
+  // Apply all filters
+  const statusFilter = document.getElementById('status-filter').value;
+  const textQuery = (document.getElementById('text-search').value || '').toLowerCase().trim();
+  const ezFrom = (document.getElementById('ez-from').value || '').trim();
+  const ezTo = (document.getElementById('ez-to').value || '').trim();
+  
+  let filtered = currentListings.filter(item => {{
+    // Status filter
+    if (statusFilter !== 'all') {{
+      const st = getStatus(item.id);
+      if (st !== statusFilter) return false;
+    }}
+    // Text search across title, description, source, engine, trim
+    if (textQuery) {{
+      const haystack = [
+        item.title, item.description_text, item.source,
+        item.engine, item.probable_engine, item.trim,
+        item.transmission, item.body_style
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(textQuery)) return false;
+    }}
+    // EZ year range
+    if (ezFrom || ezTo) {{
+      const yr = (item.first_registration || '').substring(0, 4);
+      if (ezFrom && yr < ezFrom) return false;
+      if (ezTo && yr > ezTo) return false;
+    }}
+    return true;
+  }});
+  
+  const sorted = sortListings(filtered);
+  grid.innerHTML = sorted.map(item => renderOverviewCard(item)).join('') || '<p class="muted">Keine Treffer f&uuml;r diese Filter.</p>';
+  document.getElementById('visible-count').textContent = sorted.length + ' von ' + currentListings.length + ' Angeboten';
 }}
 function currentDetailId() {{
   const match = window.location.pathname.match(new RegExp('^/car/(.+)$'));
@@ -474,6 +550,10 @@ document.getElementById('scoring-form').addEventListener('submit', async event =
   await loadListings();
 }});
 document.getElementById('listing-sort').addEventListener('change', renderListings);
+document.getElementById('status-filter').addEventListener('change', renderListings);
+document.getElementById('text-search').addEventListener('input', renderListings);
+document.getElementById('ez-from').addEventListener('input', renderListings);
+document.getElementById('ez-to').addEventListener('input', renderListings);
 window.addEventListener('popstate', renderRoute);
 document.getElementById('run').addEventListener('click', async () => {{
   document.getElementById('status').textContent = 'Crawl läuft...';
@@ -504,6 +584,22 @@ def _start_scheduler(app: TrackerWebApp, interval_seconds: int) -> None:
     threading.Thread(target=loop, name="corvette-tracker-scheduler", daemon=True).start()
 
 
+def _start_health_scheduler(app: TrackerWebApp, interval_seconds: int) -> None:
+    """Background thread that periodically checks offer URLs for online status."""
+
+    def loop() -> None:
+        while True:
+            time.sleep(interval_seconds)
+            try:
+                summary = check_stale_offers(app.store)
+                if summary["checked"] > 0:
+                    print(f"Health check: {summary['checked']} checked, {summary['online']} online, {summary['offline']} offline, {summary['failed']} failed")
+            except Exception as exc:
+                print(f"Scheduled health check failed: {exc}")
+
+    threading.Thread(target=loop, name="corvette-tracker-health-scheduler", daemon=True).start()
+
+
 def main() -> int:
     host = os.getenv("CORVETTE_TRACKER_HOST", "0.0.0.0")
     port = int(os.getenv("PORT", os.getenv("CORVETTE_TRACKER_PORT", "8096")))
@@ -529,6 +625,11 @@ def main() -> int:
         print(f"Scheduled crawl interval: {interval}s")
     else:
         print("Scheduled crawl disabled")
+
+    health_interval = parse_interval_seconds(os.getenv("CORVETTE_TRACKER_HEALTH_INTERVAL", "5m"))
+    if health_interval is not None:
+        _start_health_scheduler(app, health_interval)
+        print(f"Scheduled health check interval: {health_interval}s")
 
     server = app.make_server(host, port)
     print(f"Corvette Tracker WebUI listening on http://{host}:{port}")
