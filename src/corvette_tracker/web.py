@@ -594,9 +594,9 @@ def _start_health_scheduler(app: TrackerWebApp, interval_seconds: int) -> None:
         for attempt in range(3):
             try:
                 summary = check_stale_offers(app.store)
-                if summary["checked"] > 0:
-                    print(f"Health check: {summary['checked']} checked, {summary['online']} online, "
-                          f"{summary['offline']} offline, {summary['failed']} failed")
+                print(f"Health check: {summary['checked']} checked, {summary['skipped']} skipped, "
+                      f"{summary['online']} online, {summary['offline']} offline, "
+                      f"{summary['failed']} failed, {summary['total']} total")
                 return
             except Exception as exc:
                 msg = str(exc)
