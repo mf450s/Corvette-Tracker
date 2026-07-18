@@ -99,7 +99,7 @@ def filter_listings(listings: list[Listing], filters: FilterParams) -> list[List
                 min_val = int(v)
             except ValueError:
                 continue
-            result = [l for l in result if l.score >= min_val]
+            result = [l for l in result if l.score is not None and l.score >= min_val]
 
         elif key == "ez_min":
             # Year prefix on first_registration (e.g. "2005-01" → "2005")
