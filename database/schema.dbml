@@ -457,6 +457,23 @@ Table listing_scores {
   }
 }
 
+Table offer_online_status {
+  id integer [pk, increment]
+  listing_id integer [not null]
+  is_online boolean [not null, default: true, note: "false = offer appears taken down / unavailable"]
+  last_checked_at datetime [not null, note: "When the online status was last verified"]
+  http_status integer [note: "HTTP status code from last check, e.g. 200, 404, 503"]
+  error_message text [note: "Error details if check failed (timeout, blocked, parse error)"]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+
+  indexes {
+    (listing_id) [unique, name: "ux_online_status_listing", note: "One current status per offer"]
+    is_online [name: "idx_online_status_flag", note: "Quick lookup of offline offers"]
+    last_checked_at [name: "idx_online_status_checked"]
+  }
+}
+
 // Relationships
 Ref: raw_listings.crawl_run_id > crawl_runs.id [delete: cascade]
 Ref: raw_listings.source_id > sources.id [delete: restrict]
@@ -494,3 +511,5 @@ Ref: feed_items.vehicle_cluster_id > vehicle_clusters.id [delete: set null]
 Ref: scoring_runs.crawl_run_id > crawl_runs.id [delete: set null]
 Ref: listing_scores.scoring_run_id > scoring_runs.id [delete: cascade]
 Ref: listing_scores.listing_id > listings.id [delete: cascade]
+
+Ref: offer_online_status.listing_id > listings.id [delete: cascade]

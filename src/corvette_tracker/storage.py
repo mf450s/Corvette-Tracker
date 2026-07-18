@@ -35,6 +35,14 @@ CREATE TABLE IF NOT EXISTS manual_overrides (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(listing_id) REFERENCES listings(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS offer_online_status (
+  listing_id TEXT PRIMARY KEY,
+  is_online INTEGER NOT NULL DEFAULT 1,
+  last_checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  http_status INTEGER,
+  error_message TEXT,
+  FOREIGN KEY(listing_id) REFERENCES listings(id) ON DELETE CASCADE
+);
 """
 
 LISTING_FIELDS = {field.name for field in fields(Listing)}
@@ -195,3 +203,58 @@ class TrackerStore:
         )
         self.conn.commit()
         return updated
+
+    def update_online_status(
+        self,
+        listing_id: str,
+        is_online: bool,
+        http_status: int | None = None,
+        error_message: str | None = None,
+    ) -> dict:
+        """Upsert the online status for a listing.
+
+        Returns the current row as dict: {listing_id, is_online, last_checked_at, http_status, error_message}
+        """
+        self.conn.execute(
+            """INSERT INTO offer_online_status (listing_id, is_online, http_status, error_message, last_checked_at)
+               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(listing_id) DO UPDATE SET
+                 is_online=excluded.is_online,
+                 http_status=excluded.http_status,
+                 error_message=excluded.error_message,
+                 last_checked_at=CURRENT_TIMESTAMP""",
+            (listing_id, int(is_online), http_status, error_message),
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT listing_id, is_online, last_checked_at, http_status, error_message FROM offer_online_status WHERE listing_id = ?",
+            (listing_id,),
+        ).fetchone()
+        return dict(row)
+
+    def get_online_status(self, listing_id: str) -> dict | None:
+        """Get current online status for a listing, or None if never checked."""
+        row = self.conn.execute(
+            "SELECT listing_id, is_online, last_checked_at, http_status, error_message FROM offer_online_status WHERE listing_id = ?",
+            (listing_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_online_statuses(
+        self,
+        *,
+        is_online: bool | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """List online statuses, optionally filtered by online/offline flag."""
+        if is_online is not None:
+            rows = self.conn.execute(
+                "SELECT listing_id, is_online, last_checked_at, http_status, error_message FROM offer_online_status WHERE is_online = ? ORDER BY last_checked_at DESC LIMIT ?",
+                (int(is_online), limit),
+            )
+        else:
+            rows = self.conn.execute(
+                "SELECT listing_id, is_online, last_checked_at, http_status, error_message FROM offer_online_status ORDER BY last_checked_at DESC LIMIT ?",
+                (limit,),
+            )
+        return [dict(row) for row in rows]
