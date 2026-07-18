@@ -432,20 +432,20 @@ function renderOverviewCard(item) {{
     </div>
   </article>`;
 }}
-function renderInlineEditor(field, item) {{
+function inlineEditorValue(field, item) {{
   const value = item[field.name];
   if (!field.editable) return `<div class="field-editor readonly-field"><span>${{esc(field.name)}}</span><strong>${{esc(displayValue(value))}}</strong></div>`;
   if (field.kind === 'boolean') {{
-    return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.name)}}</label><form onsubmit="saveInlineField(event, '${{esc(item.id)}}', '${{esc(field.name)}}', '${{esc(field.kind)}}')"><select name="value"><option value="" ${{value == null ? 'selected' : ''}}>k.A.</option><option value="true" ${{value === true ? 'selected' : ''}}>ja</option><option value="false" ${{value === false ? 'selected' : ''}}>nein</option></select><button>OK</button></form></div>`;
+    return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.name)}}</label><select data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}"><option value="" ${{value == null ? 'selected' : ''}}>k.A.</option><option value="true" ${{value === true ? 'selected' : ''}}>ja</option><option value="false" ${{value === false ? 'selected' : ''}}>nein</option></select></div>`;
   }}
   const tag = field.kind === 'json' || field.kind === 'list' || field.name === 'description_text' ? 'textarea' : 'input';
   const input = tag === 'textarea'
-    ? `<textarea name="value">${{esc(editorValue(value, field.kind))}}</textarea>`
-    : `<input name="value" type="${{field.kind === 'number' ? 'number' : 'text'}}" value="${{esc(editorValue(value, field.kind))}}">`;
-  return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.name)}}</label><form onsubmit="saveInlineField(event, '${{esc(item.id)}}', '${{esc(field.name)}}', '${{esc(field.kind)}}')">${{input}}<button>OK</button></form></div>`;
+    ? `<textarea data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}">${{esc(editorValue(value, field.kind))}}</textarea>`
+    : `<input data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}" type="${{field.kind === 'number' ? 'number' : 'text'}}" value="${{esc(editorValue(value, field.kind))}}">`;
+  return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.name)}}</label>${{input}}</div>`;
 }}
 function renderAllFields(item) {{
-  return `<details class="listing-fields" open><summary>Alle Werte anzeigen / inline bearbeiten</summary><div class="field-grid">${{fieldRegistry.map(field => renderInlineEditor(field, item)).join('')}}</div></details>`;
+  return `<details class="listing-fields" open><summary>Alle Werte anzeigen / inline bearbeiten</summary><div class="field-grid">${{fieldRegistry.map(field => inlineEditorValue(field, item)).join('')}}</div><div class="button-row" style="margin-top:16px"><button class="button" onclick="saveAllFields('${{esc(item.id)}}')">Speichern</button></div></details>`;
 }}
 function renderHistory(history) {{
   const rows = (history || []).map(row => `<tr><td>${{esc(row.captured_at)}}</td><td>${{esc(row.change_type)}}</td><td>${{fmtEur(row.price_eur)}}</td><td>${{fmtKm(row.mileage_km)}}</td></tr>`).join('');
@@ -522,19 +522,22 @@ function openOverview(event) {{
   history.pushState({{}}, '', '/');
   renderRoute();
 }}
-async function saveInlineField(event, id, field, kind) {{
-  event.preventDefault();
-  const form = event.target;
-  let value;
-  try {{
-    value = parseEditorValue(form.value.value, kind);
-  }} catch (error) {{
-    document.getElementById('status').textContent = `${{field}} enthält ungültiges JSON`;
-    return;
-  }}
-  const response = await fetch('/api/listings/' + encodeURIComponent(id), {{method:'PATCH', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{[field]: value}})}});
+async function saveAllFields(id) {{
+  const fields = {{}};
+  document.querySelectorAll('.detail-card [data-field-name]').forEach(input => {{
+    const name = input.dataset.fieldName;
+    const kind = input.dataset.fieldKind || 'text';
+    try {{
+      fields[name] = parseEditorValue(input.value, kind);
+    }} catch (error) {{
+      document.getElementById('status').textContent = `${{name}} enthält ungültige Daten`;
+    }}
+  }});
+  const keys = Object.keys(fields);
+  if (keys.length === 0) {{ document.getElementById('status').textContent = 'Keine Felder zum Speichern.'; return; }}
+  const response = await fetch('/api/listings/' + encodeURIComponent(id), {{method:'PATCH', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(fields)}});
   if (!response.ok) {{ document.getElementById('status').textContent = 'Speichern fehlgeschlagen: ' + (await response.text()); return; }}
-  document.getElementById('status').textContent = `${{field}} gespeichert`;
+  document.getElementById('status').textContent = keys.length + ' Feld(er) gespeichert';
   await loadListings();
 }}
 document.getElementById('scoring-form').addEventListener('submit', async event => {{

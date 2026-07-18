@@ -12,6 +12,7 @@ import yaml
 from .ai_enrichment import AIEnrichmentProvider, enrich_listings
 from .dedupe import assign_clusters
 from .feed import build_feed_payload, write_exports
+from .health import check_stale_offers
 from .models import Listing
 from .scoring import DEFAULT_SCORING_CONFIG, apply_scores, merge_scoring_config
 from .sources.autouncle import DEFAULT_URL as AUTOUNCLE_URL, fetch_autouncle
@@ -203,6 +204,39 @@ def run(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def run_health(args: argparse.Namespace) -> int:
+    database_path = Path(args.database or load_config(args.config).get("database_path", "data/corvette_tracker.sqlite"))
+    if not database_path.is_absolute():
+        output_dir = Path(args.output_dir or load_config(args.config).get("output_dir", ".")).resolve()
+        database_path = output_dir / database_path
+
+    store = TrackerStore(database_path)
+    summary = check_stale_offers(store, force=True, dry_run=getattr(args, "dry_run", False))
+
+    mode = " (dry-run)" if getattr(args, "dry_run", False) else ""
+    print(f"Health check{mode}: {summary['checked']} checked, {summary['skipped']} skipped, "
+          f"{summary['online']} online, {summary['offline']} offline, "
+          f"{summary['failed']} failed, {summary['total']} total")
+    if summary["results"]:
+        for r in summary["results"]:
+            status_str = "online" if r["is_online"] else "offline"
+            extra = f" (HTTP {r['http_status']})" if r["http_status"] else f" ({r['error']})"
+            print(f"  {r['listing_id']}: {status_str}{extra}")
+
+    check_file = Path(args.check_file) if getattr(args, "check_file", None) else None
+    if check_file:
+        check_file.write_text(
+            f"checked_at={summary['checked_at']}\n"
+            f"checked={summary['checked']}\n"
+            f"online={summary['online']}\n"
+            f"offline={summary['offline']}\n"
+            f"failed={summary['failed']}\n"
+            f"total={summary['total']}\n",
+        )
+
+    return 0 if summary["failed"] == 0 else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="corvette-tracker")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -214,6 +248,15 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--ai-provider", help="AI enrichment provider as module:ClassName")
     run_parser.add_argument("--ai-max-images", type=int, help="Maximum images per listing sent to AI enrichment")
     run_parser.set_defaults(func=run)
+
+    health_parser = sub.add_parser("health", help="check online status of all known listings")
+    health_parser.add_argument("--config")
+    health_parser.add_argument("--output-dir")
+    health_parser.add_argument("--database")
+    health_parser.add_argument("--check-file", help="write check metadata to this file (for cron/scheduler integration)")
+    health_parser.add_argument("--dry-run", action="store_true", help="check URLs but do not update the database")
+    health_parser.set_defaults(func=run_health)
+
     args = parser.parse_args(argv)
     return args.func(args)
 
