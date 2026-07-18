@@ -269,3 +269,119 @@ def test_unknown_filter_key():
 def test_invalid_numeric_filter_does_not_crash():
     result = filter_listings(LISTINGS, {"price_min": "not-a-number"})
     assert len(result) == 8  # silently skipped
+
+
+# --- Edge cases: empty list, None fields ---
+
+def test_empty_listings_returns_empty():
+    result = filter_listings([], {"source": "Kleinanzeigen"})
+    assert result == []
+
+
+def test_empty_listings_no_filter():
+    result = filter_listings([], {})
+    assert result == []
+
+
+def test_score_min_with_none_score_does_not_crash():
+    listings = [
+        make_listing("a"),
+        Listing(
+            id="none_score", source="Kleinanzeigen", source_listing_id="none_score",
+            url="https://example.test/none_score", title="No Score",
+            score=None,
+        ),
+    ]
+    result = filter_listings(listings, {"score_min": "60"})
+    assert len(result) == 1
+    assert result[0].id == "a"
+
+
+def test_score_min_none_score_filtered_out():
+    listings = [
+        Listing(
+            id="none_score", source="Kleinanzeigen", source_listing_id="none_score",
+            url="https://example.test/none_score", title="No Score",
+            score=None,
+        ),
+    ]
+    result = filter_listings(listings, {"score_min": "0"})
+    assert len(result) == 0  # None is not >= 0
+
+
+def test_ez_min_none_registration_filtered_out():
+    listings = [
+        Listing(
+            id="no_ez", source="Kleinanzeigen", source_listing_id="no_ez",
+            url="https://example.test/no_ez", title="No EZ",
+            first_registration=None,
+        ),
+        make_listing("g"),
+    ]
+    result = filter_listings(listings, {"ez_min": "2000"})
+    assert len(result) == 1
+    assert result[0].id == "g"
+
+
+def test_tuv_min_none_tuv_filtered_out():
+    listings = [
+        Listing(
+            id="no_tuv", source="Kleinanzeigen", source_listing_id="no_tuv",
+            url="https://example.test/no_tuv", title="No TUV",
+            tuv_until=None,
+        ),
+        make_listing("a"),
+    ]
+    result = filter_listings(listings, {"tuv_min": "2020"})
+    assert len(result) == 1
+    assert result[0].id == "a"
+
+
+# --- Case sensitivity on non-engine fields ---
+
+def test_source_filter_case_sensitive():
+    listings = [
+        make_listing("a", source="Kleinanzeigen"),
+        make_listing("b", source="kleinanzeigen"),
+    ]
+    result = filter_listings(listings, {"source": "Kleinanzeigen"})
+    assert {l.id for l in result} == {"a"}
+
+
+# --- Combined: score_min with price AND mileage None ---
+
+def test_price_mileage_none_not_crash():
+    listings = [
+        Listing(
+            id="no_pm", source="Kleinanzeigen", source_listing_id="no_pm",
+            url="https://example.test/no_pm", title="No Price/Mileage",
+            price_eur=None, mileage_km=None, score=50,
+        ),
+    ]
+    result = filter_listings(listings, {"price_min": "10000", "mileage_max": "50000"})
+    assert len(result) == 0  # None excluded
+
+
+# --- Combined: all available filters simultaneously ---
+
+def test_all_filters_combined():
+    result = filter_listings(LISTINGS, {
+        "source": "Kleinanzeigen",
+        "transmission": "manual",
+        "trim": "Z06",
+        "engine": "LS7",
+        "body_style": "Coupé",
+        "price_min": "30000",
+        "price_max": "40000",
+        "mileage_min": "40000",
+        "mileage_max": "60000",
+        "change_type": "new",
+        "risk_free": "true",
+        "score_min": "60",
+        "ez_min": "2005",
+        "ez_max": "2010",
+        "accident_status": "unbekannt",
+        "tuv_min": "2020",
+    })
+    assert len(result) == 1
+    assert result[0].id == "a"
