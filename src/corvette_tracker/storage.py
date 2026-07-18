@@ -10,6 +10,129 @@ from typing import Any
 from .models import Listing
 from .validation import sanity_check_against_previous
 
+# Type alias for a filter dict: key → string value from query params
+FilterParams = dict[str, str]
+
+
+def filter_listings(listings: list[Listing], filters: FilterParams) -> list[Listing]:
+    """Apply filter parameters to a list of listings. All filters are AND-combined.
+
+    Supported filter keys match the query-parameter names used in the API:
+      source, transmission, trim, engine, body_style       — exact match (categorical)
+      price_min, price_max, mileage_min, mileage_max        — numeric range (inclusive)
+      change_type                                           — exact match
+      risk_free                                             — 'true'/'1' hides listings with risk_flags
+      score_min                                             — minimum score (inclusive)
+      ez_min, ez_max                                        — year range on first_registration (YYYY)
+      accident_status                                       — exact match
+      tuv_min                                               — year range on tuv_until
+      eu_spec                                               — 'true'/'false' exact match on bool
+
+    Any unknown or empty filter keys are silently ignored.
+    """
+    result = list(listings)
+
+    for key, value in filters.items():
+        if not value or not isinstance(value, str):
+            continue
+        v = value.strip()
+        if not v:
+            continue
+
+        if key == "source":
+            result = [l for l in result if l.source == v]
+
+        elif key == "transmission":
+            result = [l for l in result if l.transmission == v]
+
+        elif key == "trim":
+            result = [l for l in result if l.trim == v]
+
+        elif key == "engine":
+            # Check both engine and probable_engine
+            vl = v.lower()
+            result = [
+                l for l in result
+                if (l.engine or "").lower() == vl or (l.probable_engine or "").lower() == vl
+            ]
+
+        elif key == "body_style":
+            result = [l for l in result if l.body_style == v]
+
+        elif key == "price_min":
+            try:
+                min_val = int(v)
+            except ValueError:
+                continue
+            result = [l for l in result if l.price_eur is not None and l.price_eur >= min_val]
+
+        elif key == "price_max":
+            try:
+                max_val = int(v)
+            except ValueError:
+                continue
+            result = [l for l in result if l.price_eur is not None and l.price_eur <= max_val]
+
+        elif key == "mileage_min":
+            try:
+                min_val = int(v)
+            except ValueError:
+                continue
+            result = [l for l in result if l.mileage_km is not None and l.mileage_km >= min_val]
+
+        elif key == "mileage_max":
+            try:
+                max_val = int(v)
+            except ValueError:
+                continue
+            result = [l for l in result if l.mileage_km is not None and l.mileage_km <= max_val]
+
+        elif key == "change_type":
+            result = [l for l in result if l.change_type == v]
+
+        elif key == "risk_free":
+            if v in ("true", "1"):
+                result = [l for l in result if not l.risk_flags]
+
+        elif key == "score_min":
+            try:
+                min_val = int(v)
+            except ValueError:
+                continue
+            result = [l for l in result if l.score >= min_val]
+
+        elif key == "ez_min":
+            # Year prefix on first_registration (e.g. "2005-01" → "2005")
+            result = [
+                l for l in result
+                if l.first_registration and l.first_registration[:4] >= v
+            ]
+
+        elif key == "ez_max":
+            result = [
+                l for l in result
+                if l.first_registration and l.first_registration[:4] <= v
+            ]
+
+        elif key == "accident_status":
+            result = [l for l in result if l.accident_status == v]
+
+        elif key == "tuv_min":
+            result = [
+                l for l in result
+                if l.tuv_until and l.tuv_until[:4] >= v
+            ]
+
+        elif key == "eu_spec":
+            if v == "true":
+                result = [l for l in result if l.eu_spec is True]
+            elif v == "false":
+                result = [l for l in result if l.eu_spec is False]
+
+        # Unknown keys are silently ignored (forward-compatible)
+
+    return result
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS listings (
   id TEXT PRIMARY KEY,

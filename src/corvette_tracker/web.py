@@ -10,7 +10,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import yaml
 
@@ -18,7 +18,7 @@ from .feed import build_feed_payload, format_eur, format_km, write_exports
 from .health import CACHE_TTL_SECONDS, check_stale_offers, get_cached_status
 from .models import Listing
 from .scoring import apply_score, apply_scores, merge_scoring_config
-from .storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, TrackerStore
+from .storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, FilterParams, TrackerStore, filter_listings
 
 RunCallback = Callable[[], tuple[int, dict[str, Any]]]
 
@@ -160,9 +160,18 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             self._send_html(render_app_shell())
             return
         if path == "/api/listings":
+            parsed = urlparse(self.path)
+            filters: FilterParams = {k: v[0] for k, v in parse_qs(parsed.query).items()}
             scoring = self.tracker_app.scoring_config()
-            listings = [apply_score(listing, scoring).to_dict() for listing in self.tracker_app.store.list_active()]
-            self._send_json({"listings": listings, "last_run": self.tracker_app.last_run_status(), "last_crawl_at": self.tracker_app.last_crawl_at()})
+            scored = [apply_score(listing, scoring) for listing in self.tracker_app.store.list_active()]
+            filtered = filter_listings(scored, filters)
+            self._send_json({
+                "listings": [l.to_dict() for l in filtered],
+                "total": len(filtered),
+                "total_all": len(scored),
+                "last_run": self.tracker_app.last_run_status(),
+                "last_crawl_at": self.tracker_app.last_crawl_at(),
+            })
             return
         history_prefix = "/api/listings/"
         history_suffix = "/history"
@@ -304,6 +313,14 @@ def render_app_shell() -> str:
     .meta-line {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }}
     .filter-input {{ min-width:160px; }}
     .ez-range {{ display:flex; gap:6px; align-items:center; }} .ez-range input {{ width:80px; }}
+    .filter-row {{ display:flex; gap:12px; flex-wrap:wrap; align-items:end; margin-top:8px; padding-top:10px; border-top:1px solid var(--line); }}
+    .filter-row label {{ display:grid; gap:4px; font-size:12px; color:var(--muted); }}
+    .filter-row label select,.filter-row label input {{ min-width:110px; }}
+    .range-pair {{ display:flex; gap:4px; align-items:center; }} .range-pair input {{ width:90px; }}
+    .score-slider {{ width:140px; vertical-align:middle; }}
+    .toggle-label {{ display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; }}
+    .toggle-label input[type=checkbox] {{ width:18px; height:18px; accent-color:var(--accent); }}
+    .visible-count {{ font-weight:700; font-size:15px; margin-top:10px; color:var(--text); }}
   </style>
 </head>
 <body>
@@ -314,7 +331,9 @@ def render_app_shell() -> str:
     <div class="toolbar"><button id="run">Jetzt crawlen</button><span id="status" class="status muted"></span></div>
     <p class="crawl-meta">Letzter Crawl: <strong id="last-crawl">noch nie</strong></p>
   </header>
-  <main class="wrap"><section class="panel"><h2>Scoring konfigurieren</h2><p class="muted">Standard: Schalter sehr wichtig, kein Cabrio wichtig, kein LS2 wichtig, Trim mittel. Werte werden in config.yaml gespeichert.</p><form id="scoring-form" class="score-form"><label>Schalter<input name="manual_transmission" type="number" min="0" max="100" data-score-weight="manual_transmission"></label><label>Kein Cabrio<input name="non_convertible" type="number" min="0" max="100" data-score-weight="non_convertible"></label><label>Kein LS2<input name="non_ls2" type="number" min="0" max="100" data-score-weight="non_ls2"></label><label>Trim<input name="preferred_trim" type="number" min="0" max="100" data-score-weight="preferred_trim"></label><label>Trims<input name="preferred_trims" placeholder="Grand Sport, Z06, ZR1"></label><button>Scoring speichern</button></form></section><section class="panel list-toolbar"><div><h2>Listings</h2><p class="muted">Filter und Sortierung — Status wird live vom Backend geholt.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label class="muted">Suche<input id="text-search" class="filter-input" type="text" placeholder="Titel, Beschreibung&hellip;"></label><label class="muted">Status<select id="status-filter"><option value="all">Alle</option><option value="online">Online</option><option value="offline">Offline</option></select></label><label class="muted">EZ von<input id="ez-from" type="text" placeholder="z.B. 2008" maxlength="4"></label><label class="muted">bis<input id="ez-to" type="text" placeholder="z.B. 2013" maxlength="4"></label><label class="muted">Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="status-online">Online zuerst</option><option value="status-offline">Offline zuerst</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option><option value="mileage-desc">km hoch</option><option value="ez-asc">EZ alt&rarr;neu</option><option value="ez-desc">EZ neu&rarr;alt</option><option value="source">Quelle</option></select></label></div></section><p id="visible-count" class="muted" style="margin-bottom:8px"></p><div id="listings" class="grid"></div></main>
+  <main class="wrap"><section class="panel"><h2>Scoring konfigurieren</h2><p class="muted">Standard: Schalter sehr wichtig, kein Cabrio wichtig, kein LS2 wichtig, Trim mittel. Werte werden in config.yaml gespeichert.</p><form id="scoring-form" class="score-form"><label>Schalter<input name="manual_transmission" type="number" min="0" max="100" data-score-weight="manual_transmission"></label><label>Kein Cabrio<input name="non_convertible" type="number" min="0" max="100" data-score-weight="non_convertible"></label><label>Kein LS2<input name="non_ls2" type="number" min="0" max="100" data-score-weight="non_ls2"></label><label>Trim<input name="preferred_trim" type="number" min="0" max="100" data-score-weight="preferred_trim"></label><label>Trims<input name="preferred_trims" placeholder="Grand Sport, Z06, ZR1"></label><button>Scoring speichern</button></form></section><section class="panel list-toolbar"><div><h2>Listings</h2><p class="muted">Filter und Sortierung — Status wird live vom Backend geholt.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label class="muted">Suche<input id="text-search" class="filter-input" type="text" placeholder="Titel, Beschreibung&hellip;"></label><label class="muted">Status<select id="status-filter"><option value="all">Alle</option><option value="online">Online</option><option value="offline">Offline</option></select></label><label class="muted">Quelle<select id="source-filter"><option value="all">Alle</option><option value="AutoScout24">AutoScout24</option><option value="AutoUncle">AutoUncle</option><option value="Kleinanzeigen">Kleinanzeigen</option></select></label><label class="muted">Getriebe<select id="transmission-filter"><option value="all">Alle</option><option value="manual">Schalter</option><option value="automatic">Automatik</option></select></label><label class="muted">Trim<select id="trim-filter"><option value="all">Alle</option><option value="Base">Base</option><option value="Grand Sport">Grand Sport</option><option value="Z06">Z06</option><option value="ZR1">ZR1</option></select></label><label class="muted">Motor<select id="engine-filter"><option value="all">Alle</option><option value="LS2">LS2</option><option value="LS3">LS3</option><option value="LS7">LS7</option><option value="LS9">LS9</option></select></label><label class="muted">Karosserie<select id="body-filter"><option value="all">Alle</option><option value="Cabrio">Cabrio</option><option value="Coupé">Coupé</option><option value="Targa">Targa</option></select></label></div>
+<div class="filter-row"><label>Preis<span id="price-min-input"><input id="price-min" type="number" placeholder="von" min="0" step="1000"></span><span>&ndash;</span><span><input id="price-max" type="number" placeholder="bis" min="0" step="1000"></span>€</label><label>km<span><input id="km-min" type="number" placeholder="von" min="0" step="1000"></span><span>&ndash;</span><span><input id="km-max" type="number" placeholder="bis" min="0" step="1000"></span>km</label><label>Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="status-online">Online zuerst</option><option value="status-offline">Offline zuerst</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option><option value="mileage-desc">km hoch</option><option value="ez-asc">EZ alt&rarr;neu</option><option value="ez-desc">EZ neu&rarr;alt</option><option value="source">Quelle</option></select></label><label>EZ von<input id="ez-from" type="text" placeholder="z.B. 2008" maxlength="4"></label><label>bis<input id="ez-to" type="text" placeholder="z.B. 2013" maxlength="4"></label><label>Änderung<select id="change-filter"><option value="all">Alle</option><option value="new">Neu</option><option value="price_change">Preis geändert</option><option value="metadata_change">Metadaten geändert</option><option value="unchanged">Unverändert</option></select></label><label>Score &ge;<input id="score-min" class="score-slider" type="range" min="0" max="100" value="0"><span id="score-value">0</span></label><label class="toggle-label"><input id="hide-risk" type="checkbox">Riskante ausblenden</label></div>
+<p class="visible-count" id="visible-count">Alle Angebote</p></section><div id="listings" class="grid"></div></main>
 <script data-field-registry="{field_registry_attr}">
 const fieldRegistry = {field_registry_js};
 let currentListings = [];
@@ -469,6 +488,18 @@ function renderOverviewPage() {{
   const textQuery = (document.getElementById('text-search').value || '').toLowerCase().trim();
   const ezFrom = (document.getElementById('ez-from').value || '').trim();
   const ezTo = (document.getElementById('ez-to').value || '').trim();
+  const sourceFilter = document.getElementById('source-filter').value;
+  const transmissionFilter = document.getElementById('transmission-filter').value;
+  const trimFilter = document.getElementById('trim-filter').value;
+  const engineFilter = document.getElementById('engine-filter').value;
+  const bodyFilter = document.getElementById('body-filter').value;
+  const changeFilter = document.getElementById('change-filter').value;
+  const priceMin = parseFloat(document.getElementById('price-min').value) || 0;
+  const priceMax = parseFloat(document.getElementById('price-max').value) || 0;
+  const kmMin = parseFloat(document.getElementById('km-min').value) || 0;
+  const kmMax = parseFloat(document.getElementById('km-max').value) || 0;
+  const scoreMin = parseInt(document.getElementById('score-min').value) || 0;
+  const hideRisk = document.getElementById('hide-risk').checked;
   
   let filtered = currentListings.filter(item => {{
     // Status filter
@@ -491,6 +522,31 @@ function renderOverviewPage() {{
       if (ezFrom && yr < ezFrom) return false;
       if (ezTo && yr > ezTo) return false;
     }}
+    // Source filter
+    if (sourceFilter !== 'all' && item.source !== sourceFilter) return false;
+    // Transmission filter
+    if (transmissionFilter !== 'all' && item.transmission !== transmissionFilter) return false;
+    // Trim filter (match by name, handle null)
+    if (trimFilter !== 'all' && (item.trim || '') !== trimFilter) return false;
+    // Engine filter (check both engine and probable_engine)
+    if (engineFilter !== 'all') {{
+      const eng = (item.engine || item.probable_engine || '');
+      if (eng !== engineFilter) return false;
+    }}
+    // Body style filter
+    if (bodyFilter !== 'all' && item.body_style !== bodyFilter) return false;
+    // Change type filter
+    if (changeFilter !== 'all' && item.change_type !== changeFilter) return false;
+    // Price range
+    if (priceMin > 0 && (item.price_eur == null || item.price_eur < priceMin)) return false;
+    if (priceMax > 0 && (item.price_eur == null || item.price_eur > priceMax)) return false;
+    // Km range
+    if (kmMin > 0 && (item.mileage_km == null || item.mileage_km < kmMin)) return false;
+    if (kmMax > 0 && (item.mileage_km == null || item.mileage_km > kmMax)) return false;
+    // Score minimum
+    if (scoreMin > 0 && (item.score == null || item.score < scoreMin)) return false;
+    // Hide risk — skip items with any risk_flag
+    if (hideRisk && item.risk_flags && item.risk_flags.length > 0) return false;
     return true;
   }});
   
@@ -557,6 +613,21 @@ document.getElementById('status-filter').addEventListener('change', renderListin
 document.getElementById('text-search').addEventListener('input', renderListings);
 document.getElementById('ez-from').addEventListener('input', renderListings);
 document.getElementById('ez-to').addEventListener('input', renderListings);
+document.getElementById('source-filter').addEventListener('change', renderListings);
+document.getElementById('transmission-filter').addEventListener('change', renderListings);
+document.getElementById('trim-filter').addEventListener('change', renderListings);
+document.getElementById('engine-filter').addEventListener('change', renderListings);
+document.getElementById('body-filter').addEventListener('change', renderListings);
+document.getElementById('change-filter').addEventListener('change', renderListings);
+document.getElementById('price-min').addEventListener('input', renderListings);
+document.getElementById('price-max').addEventListener('input', renderListings);
+document.getElementById('km-min').addEventListener('input', renderListings);
+document.getElementById('km-max').addEventListener('input', renderListings);
+document.getElementById('score-min').addEventListener('input', function() {{
+  document.getElementById('score-value').textContent = this.value;
+  renderListings();
+}});
+document.getElementById('hide-risk').addEventListener('change', renderListings);
 window.addEventListener('popstate', renderRoute);
 document.getElementById('run').addEventListener('click', async () => {{
   document.getElementById('status').textContent = 'Crawl läuft...';
