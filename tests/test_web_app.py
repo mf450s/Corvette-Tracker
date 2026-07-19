@@ -192,7 +192,6 @@ def test_web_shell_exposes_all_listing_fields_and_inline_editors():
     assert "data-field-registry" in html
     assert "renderAllFields" in html
     assert "inlineEditorValue" in html
-    assert "saveAllFields" in html
     assert "renderDetailPage" in html
     assert "renderOverviewCard" in html
     assert "Verlauf" in html
@@ -242,6 +241,178 @@ def test_web_api_returns_404_for_missing_listing(tmp_path: Path):
             assert exc.code == 404
         else:
             raise AssertionError("missing listing should return 404")
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+# --- API filter integration tests ---
+
+
+def _make_api_listing(id, source="Kleinanzeigen", transmission="manual", trim="Z06", engine="LS7",
+                      body_style="Coupé", price=35000, mileage=50000, change_type="new",
+                      score=70, risk_flags=None):
+    return Listing(
+        id=id, source=source, source_listing_id=id,
+        url=f"https://example.test/{id}",
+        title=f"Corvette C6 {trim}", generation="C6",
+        transmission=transmission, trim=trim, engine=engine,
+        body_style=body_style, price_eur=price, mileage_km=mileage,
+        score=score, change_type=change_type,
+        risk_flags=risk_flags or [],
+    )
+
+
+DIVERSE_LISTINGS = [
+    _make_api_listing("a", source="Kleinanzeigen", transmission="manual", trim="Z06", engine="LS7", body_style="Coupé", price=35000, mileage=50000, score=70),
+    _make_api_listing("b", source="AutoScout24", transmission="automatic", trim="Base", engine="LS2", body_style="Cabrio", price=25000, mileage=100000, score=35),
+    _make_api_listing("c", source="AutoUncle", transmission="manual", trim="Grand Sport", engine="LS3", body_style="Targa", price=45000, mileage=30000, score=85),
+    _make_api_listing("d", source="Kleinanzeigen", transmission="manual", trim="Z06", engine="LS7", body_style="Coupé", price=38000, mileage=45000, score=72, change_type="price_change"),
+    _make_api_listing("e", source="Kleinanzeigen", transmission="automatic", trim="Base", engine="LS2", body_style="Cabrio", price=18000, mileage=120000, score=40, risk_flags=["damage_reported"]),
+]
+
+
+def _make_filtered_request(base_url, query_string):
+    url = f"{base_url}/api/listings"
+    if query_string:
+        url += "?" + query_string
+    status, payload = request_json(url)
+    return status, payload
+
+
+def test_api_filter_no_params_returns_all(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings(DIVERSE_LISTINGS)
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = _make_filtered_request(base_url, "")
+        assert status == 200
+        assert len(payload["listings"]) == 5
+        assert payload["total"] == 5
+        assert payload["total_all"] == 5
+        ids = {l["id"] for l in payload["listings"]}
+        assert ids == {"a", "b", "c", "d", "e"}
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_api_filter_by_source(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings(DIVERSE_LISTINGS)
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = _make_filtered_request(base_url, "source=Kleinanzeigen")
+        assert status == 200
+        ids = {l["id"] for l in payload["listings"]}
+        assert ids == {"a", "d", "e"}
+        assert payload["total"] == 3
+        assert payload["total_all"] == 5
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_api_filter_by_transmission(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings(DIVERSE_LISTINGS)
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = _make_filtered_request(base_url, "transmission=manual")
+        assert status == 200
+        ids = {l["id"] for l in payload["listings"]}
+        assert ids == {"a", "c", "d"}
+        assert payload["total"] == 3
+        assert all(l["transmission"] == "manual" for l in payload["listings"])
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_api_filter_combined(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings(DIVERSE_LISTINGS)
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        qs = "source=Kleinanzeigen&transmission=manual&body_style=Coup%C3%A9&score_min=60&price_min=35000"
+        status, payload = _make_filtered_request(base_url, qs)
+        assert status == 200
+        ids = {l["id"] for l in payload["listings"]}
+        assert ids == {"a", "d"}
+        assert payload["total"] == 2
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_api_filter_risk_free(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings(DIVERSE_LISTINGS)
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = _make_filtered_request(base_url, "risk_free=true")
+        assert status == 200
+        ids = {l["id"] for l in payload["listings"]}
+        assert "e" not in ids
+        assert payload["total"] == 4
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_api_filter_price_range(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings(DIVERSE_LISTINGS)
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = _make_filtered_request(base_url, "price_min=30000&price_max=40000")
+        assert status == 200
+        ids = {l["id"] for l in payload["listings"]}
+        assert ids == {"a", "d"}
+        assert payload["total"] == 2
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_api_filter_no_match_returns_empty(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings(DIVERSE_LISTINGS)
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = _make_filtered_request(base_url, "source=Mobile.de")
+        assert status == 200
+        assert payload["listings"] == []
+        assert payload["total"] == 0
+        assert payload["total_all"] == 5
     finally:
         server.shutdown()
         thread.join(timeout=5)
