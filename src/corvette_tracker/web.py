@@ -17,6 +17,7 @@ import yaml
 from .feed import build_feed_payload, format_eur, format_km, write_exports
 from .health import CACHE_TTL_SECONDS, check_stale_offers, get_cached_status
 from .models import Listing
+from .re_scrape import re_scrape_offer
 from .scoring import apply_score, apply_scores, merge_scoring_config
 from .storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, FilterParams, TrackerStore, filter_listings
 
@@ -213,6 +214,24 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/offers/check":
             summary = check_stale_offers(self.tracker_app.store, force=True)
             self._send_json(summary)
+            return
+        if path == "/api/re-scrape":
+            try:
+                body = self._read_json_body()
+                result = re_scrape_offer(
+                    self.tracker_app.store,
+                    offer_id=body.get("offer_id"),
+                    url=body.get("url"),
+                )
+                self.tracker_app.refresh_exports()
+            except json.JSONDecodeError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            status = HTTPStatus.OK if result.get("success") else (
+                HTTPStatus.NOT_FOUND if result.get("action") == "not_found"
+                else HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+            self._send_json(result, status)
             return
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
@@ -477,7 +496,7 @@ async function renderDetailPage(item) {{
   const response = await fetch('/api/listings/' + encodeURIComponent(item.id) + '/history');
   const payload = response.ok ? await response.json() : {{history: []}};
   const detailFields = renderAllFields(item);
-  grid.innerHTML = `<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>${{renderHistory(payload.history)}}`;
+  grid.innerHTML = `<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button></div><p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>${{renderHistory(payload.history)}}`;
 }}
 function renderOverviewPage() {{
   const grid = document.getElementById('listings');
@@ -594,6 +613,22 @@ async function saveAllFields(id) {{
   const response = await fetch('/api/listings/' + encodeURIComponent(id), {{method:'PATCH', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(fields)}});
   if (!response.ok) {{ document.getElementById('status').textContent = 'Speichern fehlgeschlagen: ' + (await response.text()); return; }}
   document.getElementById('status').textContent = keys.length + ' Feld(er) gespeichert';
+  await loadListings();
+}}
+async function reScrapeOffer(id) {{
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = 'Scrape läuft...';
+  const response = await fetch('/api/re-scrape', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{offer_id: id}}),
+  }});
+  const result = await response.json();
+  if (result.success) {{
+    statusEl.textContent = '✓ ' + (result.message || 'Angebot neu gescraped');
+  }} else {{
+    statusEl.textContent = '✗ ' + (result.message || 'Scrape fehlgeschlagen');
+  }}
   await loadListings();
 }}
 document.getElementById('scoring-form').addEventListener('submit', async event => {{

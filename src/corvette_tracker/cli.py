@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from .ai_enrichment import AIEnrichmentProvider, enrich_listings
+from .re_scrape import re_scrape_offer
 from .dedupe import assign_clusters
 from .feed import build_feed_payload, write_exports
 from .health import check_stale_offers
@@ -237,6 +238,26 @@ def run_health(args: argparse.Namespace) -> int:
     return 0 if summary["failed"] == 0 else 1
 
 
+def run_scrape(args: argparse.Namespace) -> int:
+    database_path = Path(args.database or load_config(getattr(args, "config", None)).get("database_path", "data/corvette_tracker.sqlite"))
+    if not database_path.is_absolute():
+        output_dir = Path(getattr(args, "output_dir", ".")).resolve()
+        database_path = output_dir / database_path
+
+    store = TrackerStore(database_path)
+    result = re_scrape_offer(
+        store,
+        offer_id=args.offer_id,
+        url=args.url,
+    )
+
+    status = "OK" if result["success"] else "FEHLGESCHLAGEN"
+    print(f"[{status}] {result.get('message', '')}")
+    if result.get("change_type"):
+        print(f"  Änderung: {result['change_type']}")
+    return 0 if result["success"] else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="corvette-tracker")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -256,6 +277,12 @@ def main(argv: list[str] | None = None) -> int:
     health_parser.add_argument("--check-file", help="write check metadata to this file (for cron/scheduler integration)")
     health_parser.add_argument("--dry-run", action="store_true", help="check URLs but do not update the database")
     health_parser.set_defaults(func=run_health)
+
+    scrape_parser = sub.add_parser("scrape", help="re-scrape/re-verify a single offer by ID or URL")
+    scrape_parser.add_argument("--offer-id", help="Listing database ID (primary key)")
+    scrape_parser.add_argument("--url", help="Direct URL of the offer")
+    scrape_parser.add_argument("--database")
+    scrape_parser.set_defaults(func=run_scrape)
 
     args = parser.parse_args(argv)
     return args.func(args)
