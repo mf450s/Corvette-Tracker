@@ -1,7 +1,8 @@
 import yaml
 from urllib.parse import parse_qs, urlparse
 
-from corvette_tracker.cli import DEFAULT_CONFIG, collect_live, load_config
+from corvette_tracker.cli import collect_live, load_config
+from corvette_tracker.config import make_default_config
 from corvette_tracker.sources.autouncle import DEFAULT_URL as AUTOUNCLE_URL
 from corvette_tracker.sources.autoscout24 import DEFAULT_URL as AUTOSCOUT24_URL
 from corvette_tracker.sources.classic_trader import DEFAULT_URL as CLASSIC_TRADER_URL
@@ -29,8 +30,9 @@ def test_example_config_uses_standard_source_urls():
 
 
 def test_default_config_uses_standard_source_urls():
+    default = make_default_config()
     for source, expected_url in EXPECTED_SOURCE_URLS.items():
-        assert DEFAULT_CONFIG["sources"][source]["url"] == expected_url
+        assert default.sources[source].url == expected_url
 
 
 def test_standard_source_urls_use_requested_marketplace_urls():
@@ -88,12 +90,13 @@ def test_collect_live_fetches_all_configured_urls_for_source(monkeypatch):
 
 
 def test_default_config_contains_user_preference_scoring_weights():
-    weights = DEFAULT_CONFIG["scoring"]["weights"]
+    default = make_default_config()
+    weights = default.scoring.weights
 
-    assert weights["manual_transmission"] > weights["non_convertible"]
-    assert weights["non_convertible"] == weights["non_ls2"]
-    assert weights["preferred_trim"] < weights["non_ls2"]
-    assert DEFAULT_CONFIG["scoring"]["preferred_trims"] == ["Grand Sport", "Z06", "ZR1"]
+    assert weights.manual_transmission > weights.non_convertible
+    assert weights.non_convertible == weights.non_ls2
+    assert weights.preferred_trim < weights.non_ls2
+    assert default.scoring.preferred_trims == ["Grand Sport", "Z06", "ZR1"]
 
 
 def test_load_config_deep_merges_scoring_weights(tmp_path):
@@ -105,6 +108,50 @@ scoring:
 """, encoding="utf-8")
 
     config = load_config(str(config_file))
+    default = make_default_config().to_flat_dict()
 
     assert config["scoring"]["weights"]["manual_transmission"] == 42
-    assert config["scoring"]["weights"]["non_convertible"] == DEFAULT_CONFIG["scoring"]["weights"]["non_convertible"]
+    assert config["scoring"]["weights"]["non_convertible"] == default["scoring"]["weights"]["non_convertible"]
+
+
+def test_load_config_validates_unknown_source(tmp_path):
+    """Unknown source names should raise a clear validation error."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+sources:
+  unknown_source:
+    enabled: true
+""", encoding="utf-8")
+
+    import pydantic
+    import pytest
+    with pytest.raises(pydantic.ValidationError):
+        load_config(str(config_file))
+
+
+def test_load_config_rejects_negative_base_score(tmp_path):
+    """Negative base score should fail validation."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+scoring:
+  base_score: -5
+""", encoding="utf-8")
+
+    import pydantic
+    import pytest
+    with pytest.raises(pydantic.ValidationError):
+        load_config(str(config_file))
+
+
+def test_load_config_rejects_zero_max_images(tmp_path):
+    """max_images < 1 should fail validation."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+ai_enrichment:
+  max_images: 0
+""", encoding="utf-8")
+
+    import pydantic
+    import pytest
+    with pytest.raises(pydantic.ValidationError):
+        load_config(str(config_file))
