@@ -1,3 +1,19 @@
+# Corvette Tracker Configuration
+# See src/corvette_tracker/enums.py for available enum values.
+#
+# Source identifiers (SourceType):
+#   autoscout24, kleinanzeigen, autouncle, classic_trader, mobile_de
+#
+# Export formats (ExportFormat):
+#   markdown, json, csv, html
+#
+# Log levels (LogLevel):
+#   debug, info, warning, error
+#
+# Engine types (EngineType):
+#   LS2, LS3, LS7, LS9, unknown
+# ---------------------------------------------------------------------
+
 sources:
   autoscout24:
     enabled: true
@@ -24,6 +40,7 @@ sources:
   mobile_de:
     enabled: true # may return access denied from some server/IP ranges; connector reports it as warning.
     url: "https://suchen.mobile.de/fahrzeuge/search.html?dam=false&fr=2005%3A2013&isSearchRequest=true&ms=5600%3B36%3B%3B&ref=quickSearch&s=Car&sb=rel&vc=Car"
+
 output_dir: "."
 database_path: "data/corvette_tracker.sqlite"
 
