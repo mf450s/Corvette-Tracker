@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -8,9 +10,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import Self
 
 from .enums import SourceType
+from .scoring import DEFAULT_SCORING_CONFIG, merge_scoring_config
 
 # ---------------------------------------------------------------------------
-# Source sub-config
+# Pydantic config models
 # ---------------------------------------------------------------------------
 
 
@@ -23,11 +26,6 @@ class SourceConfig(BaseModel):
 
     # Allow the YAML to carry extra keys (like comments) without failing
     model_config = {"extra": "ignore"}
-
-
-# ---------------------------------------------------------------------------
-# AI enrichment sub-config
-# ---------------------------------------------------------------------------
 
 
 class AIEnrichmentConfig(BaseModel):
@@ -47,17 +45,14 @@ class AIEnrichmentConfig(BaseModel):
         return v
 
 
-# ---------------------------------------------------------------------------
-# Quality-assurance sub-config
-# ---------------------------------------------------------------------------
-
-
 class QualityConfig(BaseModel):
     """Crawl-quality thresholds that warn on suspiciously low counts."""
 
     enabled: bool = True
     min_total: int = 10
-    min_by_source: dict[str, int] = Field(default_factory=lambda: {"AutoScout24": 5, "Kleinanzeigen": 10})
+    min_by_source: dict[str, int] = Field(
+        default_factory=lambda: {"AutoScout24": 5, "Kleinanzeigen": 10}
+    )
 
     model_config = {"extra": "ignore"}
 
@@ -67,11 +62,6 @@ class QualityConfig(BaseModel):
         if v < 1:
             raise ValueError("min_total must be >= 1")
         return v
-
-
-# ---------------------------------------------------------------------------
-# Scoring sub-config
-# ---------------------------------------------------------------------------
 
 
 class ScoringWeights(BaseModel):
@@ -104,7 +94,9 @@ class ScoringConfig(BaseModel):
 
     base_score: int = 20
     weights: ScoringWeights = Field(default_factory=ScoringWeights)
-    preferred_trims: list[str] = Field(default_factory=lambda: ["Grand Sport", "Z06", "ZR1"])
+    preferred_trims: list[str] = Field(
+        default_factory=lambda: ["Grand Sport", "Z06", "ZR1"]
+    )
     risk_penalties: RiskPenalties = Field(default_factory=RiskPenalties)
 
     model_config = {"extra": "ignore"}
@@ -126,13 +118,12 @@ class ScoringConfig(BaseModel):
         }
 
 
-# ---------------------------------------------------------------------------
-# Top-level config model
-# ---------------------------------------------------------------------------
-
-
 class CorvetteConfig(BaseModel):
-    """Validated configuration for the Corvette Tracker."""
+    """Validated configuration for the Corvette Tracker.
+
+    Allows both attribute access (config.output_dir) and dict-like access
+    (config["output_dir"]) for backward compatibility with existing code.
+    """
 
     sources: dict[str, SourceConfig] = Field(default_factory=dict)
     output_dir: str = "."
@@ -153,6 +144,21 @@ class CorvetteConfig(BaseModel):
                 )
         return self
 
+    # --- dict-like access for backward compat ---
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
+    def __contains__(self, key: str) -> bool:
+        return hasattr(self, key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Recursively serialize to plain dicts (same as model_dump)."""
+        return self.model_dump()
+
     def to_flat_dict(self) -> dict[str, Any]:
         """Return the legacy flat dict format expected by current code."""
         return {
@@ -169,64 +175,95 @@ class CorvetteConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Default source URLs (kept centralised)
+# Default config (plain dict, keeps backward-compat with existing code)
 # ---------------------------------------------------------------------------
 
-DEFAULT_SOURCES: dict[str, dict[str, Any]] = {
-    "autoscout24": {
+DEFAULT_CONFIG: dict[str, Any] = {
+    "sources": {},
+    "output_dir": ".",
+    "database_path": "data/corvette_tracker.sqlite",
+    "ai_enrichment": {"enabled": False, "provider": None, "max_images": 8},
+    "quality": {
         "enabled": True,
-        "url": "https://www.autoscout24.de/lst?cat=ma16380mo19141%2Cma16380mo19140%2Cma16380mo20782%2Cma16380mo75462%2Cma16380mo21061%2Cma16380mo74838%2Cma16380mo19142%2Cma16380mo19143&cy=D&damaged_listing=exclude&desc=0&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU&atype=C&search_id=nfg3gad0ed&source=homepage_search-mask",
-        "urls": [
-            "https://www.autoscout24.de/lst?cat=ma16380mo19141%2Cma16380mo19140%2Cma16380mo20782%2Cma16380mo75462%2Cma16380mo21061%2Cma16380mo74838%2Cma16380mo19142%2Cma16380mo19143&cy=D&damaged_listing=exclude&desc=0&ocs_listing=include&powertype=kw&sort=standard&ustate=N%2CU&atype=C&search_id=nfg3gad0ed&source=homepage_search-mask",
-        ],
+        "min_total": 10,
+        "min_by_source": {"AutoScout24": 5, "Kleinanzeigen": 10},
     },
-    "kleinanzeigen": {
-        "enabled": True,
-        "url": "https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216",
-        "urls": ["https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216"],
-    },
-    "autouncle": {
-        "enabled": True,
-        "url": "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette",
-        "urls": [
-            "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette",
-            "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6",
-        ],
-    },
-    "classic_trader": {
-        "enabled": True,
-        "url": "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette",
-        "urls": [
-            "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette",
+    "scoring": DEFAULT_SCORING_CONFIG,
+}
+
+# Inject known source defaults so they're always present after merge.
+_default_source_urls: dict[str, tuple[str, list[str]]] = {}
+
+
+def _fill_source_defaults() -> None:
+    if _default_source_urls:
+        return
+    # Late imports to avoid circular dependency at module level.
+    from .sources.autouncle import DEFAULT_URL as AUTOUNCLE_URL
+    from .sources.autoscout24 import DEFAULT_URL as AS24_URL
+    from .sources.classic_trader import DEFAULT_URL as CLASSIC_TRADER_URL
+    from .sources.kleinanzeigen import DEFAULT_URL as KA_URL
+    from .sources.mobile_de import DEFAULT_URL as MOBILE_URL
+
+    _default_source_urls["autoscout24"] = (AS24_URL, [AS24_URL])
+    _default_source_urls["kleinanzeigen"] = (KA_URL, [KA_URL])
+    _default_source_urls["autouncle"] = (
+        AUTOUNCLE_URL,
+        [AUTOUNCLE_URL, "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6"],
+    )
+    _default_source_urls["classic_trader"] = (
+        CLASSIC_TRADER_URL,
+        [
+            CLASSIC_TRADER_URL,
             "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette/c6",
         ],
-    },
-    "mobile_de": {
-        "enabled": True,
-        "url": "https://suchen.mobile.de/fahrzeuge/search.html?dam=false&fr=2005%3A2013&isSearchRequest=true&ms=5600%3B36%3B%3B&ref=quickSearch&s=Car&sb=rel&vc=Car",
-    },
-}
+    )
+    _default_source_urls["mobile_de"] = (MOBILE_URL, [])
+
+    for key, (url, urls) in _default_source_urls.items():
+        DEFAULT_CONFIG["sources"][key] = {
+            "enabled": True,
+            "url": url,
+            "urls": [url, *urls],
+        }
+
+
+_fill_source_defaults()
 
 
 def make_default_config() -> CorvetteConfig:
     """Build the validated default configuration with production source URLs."""
-    sources = {name: SourceConfig(**cfg) for name, cfg in DEFAULT_SOURCES.items()}
+    return _build_default_dict()  # reuse the same builder
+
+
+def _build_default_dict() -> CorvetteConfig:
+    """Build a CorvetteConfig from DEFAULT_CONFIG."""
     return CorvetteConfig(
-        sources=sources,
-        output_dir=".",
-        database_path="data/corvette_tracker.sqlite",
-        ai_enrichment=AIEnrichmentConfig(enabled=False, provider=None, max_images=8),
-        quality=QualityConfig(enabled=True, min_total=10, min_by_source={"AutoScout24": 5, "Kleinanzeigen": 10}),
-        scoring=ScoringConfig(
-            base_score=20,
-            weights=ScoringWeights(manual_transmission=30, non_convertible=20, non_ls2=20, preferred_trim=10),
-            preferred_trims=["Grand Sport", "Z06", "ZR1"],
-            risk_penalties=RiskPenalties(
-                accident_reported=18, damage_reported=14, salvage_import_possible=10,
-                mileage_unclear=8, no_tuv=8, modified_heavily=4, sold_or_reserved=20,
-            ),
-        ),
+        sources={
+            name: SourceConfig(**cfg)
+            for name, cfg in DEFAULT_CONFIG.get("sources", {}).items()
+        },
+        output_dir=DEFAULT_CONFIG["output_dir"],
+        database_path=DEFAULT_CONFIG["database_path"],
+        ai_enrichment=AIEnrichmentConfig(**DEFAULT_CONFIG["ai_enrichment"]),
+        quality=QualityConfig(**DEFAULT_CONFIG["quality"]),
+        scoring=ScoringConfig(**DEFAULT_CONFIG["scoring"]),
     )
+
+
+def _merge_loaded_into_defaults(loaded: dict[str, Any]) -> dict[str, Any]:
+    """Merge a loaded YAML dict into DEFAULT_CONFIG."""
+    merged: dict[str, Any] = dict(DEFAULT_CONFIG)
+    merged.update(
+        (k, v)
+        for k, v in loaded.items()
+        if k not in {"sources", "ai_enrichment", "quality", "scoring"}
+    )
+    merged["sources"] = DEFAULT_CONFIG["sources"] | loaded.get("sources", {})
+    merged["ai_enrichment"] = DEFAULT_CONFIG["ai_enrichment"] | loaded.get("ai_enrichment", {})
+    merged["quality"] = DEFAULT_CONFIG["quality"] | loaded.get("quality", {})
+    merged["scoring"] = merge_scoring_config(loaded.get("scoring"))
+    return merged
 
 
 def load_config(path: str | None = None) -> dict[str, Any]:
@@ -236,41 +273,51 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     callers. Validation errors raise ``ValidationError`` with a clear message.
     """
     if not path:
-        return make_default_config().to_flat_dict()
+        return _build_default_dict().to_flat_dict()
 
     with Path(path).open("r", encoding="utf-8") as handle:
         loaded = yaml.safe_load(handle) or {}
 
-    # Merge loaded values on top of defaults
-    defaults = make_default_config()
-
-    merged_sources = {
-        **defaults.sources,
-        **{name: SourceConfig(**cfg) for name, cfg in loaded.get("sources", {}).items()},
-    }
-
-    merged_ai = AIEnrichmentConfig(**{
-        **defaults.ai_enrichment.model_dump(),
-        **(loaded.get("ai_enrichment") or {}),
-    })
-
-    merged_quality = QualityConfig(**{
-        **defaults.quality.model_dump(),
-        **(loaded.get("quality") or {}),
-    })
-
-    merged_scoring = ScoringConfig(**{
-        **defaults.scoring.model_dump(),
-        **(loaded.get("scoring") or {}),
-    })
-
-    validated = CorvetteConfig(
-        sources=merged_sources,
-        output_dir=loaded.get("output_dir", defaults.output_dir),
-        database_path=loaded.get("database_path", defaults.database_path),
-        ai_enrichment=merged_ai,
-        quality=merged_quality,
-        scoring=merged_scoring,
-    )
-
+    merged = _merge_loaded_into_defaults(loaded)
+    validated = CorvetteConfig(**merged)
     return validated.to_flat_dict()
+
+
+# ---------------------------------------------------------------------------
+# Crawl quality validation
+# ---------------------------------------------------------------------------
+
+
+def validate_crawl_quality(
+    payload: dict[str, Any], *, min_total: int, min_by_source: dict[str, int]
+) -> list[str]:
+    """Check that a crawl payload meets minimum listing counts."""
+    listings = payload.get("listings") or []
+    source_counts = Counter(str(item.get("source") or "unknown") for item in listings)
+    warnings: list[str] = []
+    if len(listings) < min_total:
+        warnings.append(
+            f"Crawler quality: only {len(listings)} total listings parsed; expected at least {min_total}"
+        )
+    for source, expected in min_by_source.items():
+        actual = source_counts.get(source, 0)
+        if actual < expected:
+            warnings.append(
+                f"Crawler quality: only {actual} {source} listings parsed; expected at least {expected}"
+            )
+    return warnings
+
+
+# ---------------------------------------------------------------------------
+# AI provider loader
+# ---------------------------------------------------------------------------
+
+
+def load_ai_provider(dotted_path: str) -> Any:
+    """Dynamically import an AI enrichment provider by 'module:ClassName'."""
+    if ":" not in dotted_path:
+        raise ValueError("AI provider must use 'module:ClassName' format")
+    module_name, class_name = dotted_path.split(":", 1)
+    module = importlib.import_module(module_name)
+    provider_class = getattr(module, class_name)
+    return provider_class()

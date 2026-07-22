@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS listings (
   payload_json TEXT NOT NULL,
   price_eur INTEGER,
   mileage_km INTEGER,
+  hidden INTEGER NOT NULL DEFAULT 0,
   last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -217,18 +218,22 @@ class TrackerStore:
                     ]
 
                 previous = self.conn.execute(
-                    "SELECT payload_json, price_eur, mileage_km FROM listings WHERE id = ?",
+                    "SELECT payload_json, price_eur, mileage_km, hidden FROM listings WHERE id = ?",
                     (listing.id,),
                 ).fetchone()
                 if previous is None:
                     listing.change_type = "new"
-                elif previous["price_eur"] != listing.price_eur:
-                    listing.change_type = "price_change"
-                    listing.previous_price_eur = previous["price_eur"]
-                elif previous["mileage_km"] != listing.mileage_km:
-                    listing.change_type = "metadata_change"
                 else:
-                    listing.change_type = "unchanged"
+                    # Preserve hidden status across re-scrapes
+                    if previous["hidden"]:
+                        listing.hidden = True
+                    if previous["price_eur"] != listing.price_eur:
+                        listing.change_type = "price_change"
+                        listing.previous_price_eur = previous["price_eur"]
+                    elif previous["mileage_km"] != listing.mileage_km:
+                        listing.change_type = "metadata_change"
+                    else:
+                        listing.change_type = "unchanged"
 
                 payload = json.dumps(listing.to_dict(), ensure_ascii=False, sort_keys=True)
                 self.conn.execute(
@@ -326,6 +331,39 @@ class TrackerStore:
         )
         self.conn.commit()
         return updated
+
+    def hide_listing(self, listing_id: str) -> None:
+        """Mark a listing as hidden (excluded from default exports)."""
+        self.conn.execute(
+            "UPDATE listings SET hidden = 1 WHERE id = ?",
+            (listing_id,),
+        )
+        # Also update payload_json for round-trip consistency
+        listing = self.get_listing(listing_id)
+        if listing:
+            listing.hidden = True
+            payload = json.dumps(listing.to_dict(), ensure_ascii=False, sort_keys=True)
+            self.conn.execute(
+                "UPDATE listings SET payload_json = ? WHERE id = ?",
+                (payload, listing_id),
+            )
+        self.conn.commit()
+
+    def unhide_listing(self, listing_id: str) -> None:
+        """Unmark a hidden listing (restored to default visibility)."""
+        self.conn.execute(
+            "UPDATE listings SET hidden = 0 WHERE id = ?",
+            (listing_id,),
+        )
+        listing = self.get_listing(listing_id)
+        if listing:
+            listing.hidden = False
+            payload = json.dumps(listing.to_dict(), ensure_ascii=False, sort_keys=True)
+            self.conn.execute(
+                "UPDATE listings SET payload_json = ? WHERE id = ?",
+                (payload, listing_id),
+            )
+        self.conn.commit()
 
     def update_online_status(
         self,

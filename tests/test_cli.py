@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from corvette_tracker.cli import run_scrape
+from corvette_tracker.cli import run_hide, run_scrape, run_unhide
 from corvette_tracker.models import Listing
 from corvette_tracker.storage import TrackerStore
 
@@ -162,3 +162,82 @@ def test_cli_scrape_args_via_subprocess() -> None:
     assert "--offer-id" in result.stdout
     assert "--url" in result.stdout
     assert "--database" in result.stdout
+
+
+# ── CLI hide / unhide tests ────────────────────────────────────────────
+
+
+def test_cli_hide_help_text_via_subprocess() -> None:
+    """The hide subcommand appears in --help."""
+    result = subprocess.run(
+        [sys.executable, "-m", "corvette_tracker.cli", "--help"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert "hide" in result.stdout
+    assert "unhide" in result.stdout
+
+
+def test_cli_hide_args_via_subprocess() -> None:
+    """The hide subcommand shows listing_id arg in its help."""
+    result = subprocess.run(
+        [sys.executable, "-m", "corvette_tracker.cli", "hide", "--help"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert "listing_id" in result.stdout
+    assert "--database" in result.stdout
+
+
+def test_cli_unhide_help_via_subprocess() -> None:
+    """The unhide subcommand shows listing_id arg in its help."""
+    result = subprocess.run(
+        [sys.executable, "-m", "corvette_tracker.cli", "unhide", "--help"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert "listing_id" in result.stdout
+
+
+def test_cli_hide_and_unhide_roundtrip(tmp_path: Path) -> None:
+    """hide and unhide commands work end-to-end on a real listing."""
+    db = tmp_path / "test_cli_hide.sqlite"
+    store = TrackerStore(db)
+    listing = Listing(
+        id="hide_test_001",
+        source="AutoScout24",
+        source_listing_id="hide999",
+        url="https://example.test/hide-test",
+        title="Corvette C6 Hide Test",
+        price_eur=30000,
+        mileage_km=40000,
+        score=70,
+    )
+    store.upsert_listings([listing])
+
+    # Hide via CLI
+    exit_code = run_hide(Namespace(
+        listing_id="hide_test_001",
+        database=str(db),
+        config=None,
+        output_dir=None,
+    ))
+    assert exit_code == 0
+
+    row = store.conn.execute("SELECT hidden FROM listings WHERE id = ?", ("hide_test_001",)).fetchone()
+    assert row["hidden"] == 1
+
+    # Unhide via CLI
+    exit_code = run_unhide(Namespace(
+        listing_id="hide_test_001",
+        database=str(db),
+        config=None,
+        output_dir=None,
+    ))
+    assert exit_code == 0
+
+    row = store.conn.execute("SELECT hidden FROM listings WHERE id = ?", ("hide_test_001",)).fetchone()
+    assert row["hidden"] == 0

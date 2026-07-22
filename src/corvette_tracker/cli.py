@@ -1,20 +1,23 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import shutil
 import sys
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .ai_enrichment import AIEnrichmentProvider, enrich_listings
-from .config import load_config
-from .re_scrape import re_scrape_offer
-from .dedupe import assign_clusters
+from .ai_enrichment import enrich_listings
+from .config import (
+    DEFAULT_CONFIG,
+    load_ai_provider,
+    load_config,
+    validate_crawl_quality,
+)
+from .dedupe import assign_clusters, enrich_clusters
 from .feed import build_feed_payload, write_exports
 from .health import check_stale_offers
 from .models import Listing
+from .re_scrape import re_scrape_offer
 from .scoring import apply_scores
 from .sources.autouncle import DEFAULT_URL as AUTOUNCLE_URL, fetch_autouncle
 from .sources.autoscout24 import DEFAULT_URL as AS24_URL, fetch_autoscout24, parse_autoscout24_search
@@ -22,28 +25,6 @@ from .sources.classic_trader import DEFAULT_URL as CLASSIC_TRADER_URL, fetch_cla
 from .sources.kleinanzeigen import DEFAULT_URL as KA_URL, fetch_kleinanzeigen
 from .sources.mobile_de import DEFAULT_URL as MOBILE_URL, fetch_mobile_de
 from .storage import TrackerStore
-
-
-def validate_crawl_quality(payload: dict, *, min_total: int, min_by_source: dict[str, int]) -> list[str]:
-    listings = payload.get("listings") or []
-    source_counts = Counter(str(item.get("source") or "unknown") for item in listings)
-    warnings: list[str] = []
-    if len(listings) < min_total:
-        warnings.append(f"Crawler quality: only {len(listings)} total listings parsed; expected at least {min_total}")
-    for source, expected in min_by_source.items():
-        actual = source_counts.get(source, 0)
-        if actual < expected:
-            warnings.append(f"Crawler quality: only {actual} {source} listings parsed; expected at least {expected}")
-    return warnings
-
-
-def load_ai_provider(dotted_path: str) -> AIEnrichmentProvider:
-    if ":" not in dotted_path:
-        raise ValueError("AI provider must use 'module:ClassName' format")
-    module_name, class_name = dotted_path.split(":", 1)
-    module = importlib.import_module(module_name)
-    provider_class = getattr(module, class_name)
-    return provider_class()
 
 
 def _copy_site_to_root(output_dir: Path) -> None:
@@ -126,6 +107,7 @@ def run_tracker(
         listings, warnings = collect_live(config)
 
     listings = assign_clusters(listings)
+    listings = enrich_clusters(listings)
     quality_warnings: list[str] = []
     quality_config = config.get("quality", {})
     if not fixture and quality_config.get("enabled", True):
@@ -148,10 +130,10 @@ def run_tracker(
     listings = apply_scores(listings, scoring_config)
     store = TrackerStore(db_path)
     changed = store.upsert_listings(listings)
-    all_listings = apply_scores(store.list_active(), scoring_config)
-    if not show_hidden:
-        all_listings = [l for l in all_listings if not l.hidden]
-    payload = build_feed_payload(all_listings)
+    payload = build_feed_payload(
+        apply_scores(store.list_active(), scoring_config),
+        show_hidden=show_hidden,
+    )
     if warnings:
         payload["warnings"] = warnings
     write_exports(payload, resolved_output_dir)
@@ -169,7 +151,7 @@ def run(args: argparse.Namespace) -> int:
         database=args.database,
         ai_provider=args.ai_provider,
         ai_max_images=args.ai_max_images,
-        show_hidden=getattr(args, "show_hidden", False),
+        show_hidden=args.show_hidden,
     )
     for warning in payload.get("warnings", []):
         print(f"WARN {warning}", file=sys.stderr)
@@ -204,8 +186,7 @@ def run_health(args: argparse.Namespace) -> int:
             f"checked={summary['checked']}\n"
             f"online={summary['online']}\n"
             f"offline={summary['offline']}\n"
-            f"failed={summary['failed']}\n"
-            f"total={summary['total']}\n",
+            f"failed={summary['failed']}\n",
         )
 
     return 0 if summary["failed"] == 0 else 1
@@ -232,40 +213,31 @@ def run_scrape(args: argparse.Namespace) -> int:
 
 
 def run_hide(args: argparse.Namespace) -> int:
-    """Hide a listing by its ID."""
+    """Mark a listing as hidden."""
     database_path = Path(args.database or load_config(getattr(args, "config", None)).get("database_path", "data/corvette_tracker.sqlite"))
     if not database_path.is_absolute():
-        output_dir = Path(getattr(args, "output_dir", ".")).resolve()
-        database_path = output_dir / database_path
+        database_path = Path.cwd() / database_path
     store = TrackerStore(database_path)
-    try:
-        listing = store.hide_listing(args.listing_id)
-        print(f"[OK] Listing {listing.id} ({listing.title}) hidden")
-        return 0
-    except KeyError:
-        print(f"[FEHLGESCHLAGEN] Kein Listing mit ID {args.listing_id} in der Datenbank")
-        return 1
+    store.hide_listing(args.listing_id)
+    print(f"Angebot {args.listing_id} wurde versteckt")
+    return 0
 
 
 def run_unhide(args: argparse.Namespace) -> int:
-    """Unhide a previously hidden listing."""
+    """Unmark a hidden listing."""
     database_path = Path(args.database or load_config(getattr(args, "config", None)).get("database_path", "data/corvette_tracker.sqlite"))
     if not database_path.is_absolute():
-        output_dir = Path(getattr(args, "output_dir", ".")).resolve()
-        database_path = output_dir / database_path
+        database_path = Path.cwd() / database_path
     store = TrackerStore(database_path)
-    try:
-        listing = store.unhide_listing(args.listing_id)
-        print(f"[OK] Listing {listing.id} ({listing.title}) unhidden")
-        return 0
-    except KeyError:
-        print(f"[FEHLGESCHLAGEN] Kein Listing mit ID {args.listing_id} in der Datenbank")
-        return 1
+    store.unhide_listing(args.listing_id)
+    print(f"Angebot {args.listing_id} ist wieder sichtbar")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="corvette-tracker")
     sub = parser.add_subparsers(dest="command", required=True)
+
     run_parser = sub.add_parser("run", help="crawl sources, update sqlite, export website/feed")
     run_parser.add_argument("--config")
     run_parser.add_argument("--fixture", help="parse a local AutoScout24-like fixture instead of live crawling")

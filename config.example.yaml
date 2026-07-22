@@ -1,17 +1,11 @@
 # Corvette Tracker Configuration
 # See src/corvette_tracker/enums.py for available enum values.
 #
-# Source identifiers (SourceType):
-#   autoscout24, kleinanzeigen, autouncle, classic_trader, mobile_de
-#
-# Export formats (ExportFormat):
-#   markdown, json, csv, html
-#
-# Log levels (LogLevel):
-#   debug, info, warning, error
-#
-# Engine types (EngineType):
-#   LS2, LS3, LS7, LS9, unknown
+# ENUM REFERENCE — allowed values for type-safe config fields:
+# SourceType:     autoscout24, kleinanzeigen, autouncle, classic_trader, mobile_de
+# EngineType:     LS2, LS3, LS7, LS9, unknown
+# ExportFormat:   markdown, json, csv, html
+# LogLevel:       debug, info, warning, error
 # ---------------------------------------------------------------------
 
 sources:
@@ -40,45 +34,32 @@ sources:
   mobile_de:
     enabled: true # may return access denied from some server/IP ranges; connector reports it as warning.
     url: "https://suchen.mobile.de/fahrzeuge/search.html?dam=false&fr=2005%3A2013&isSearchRequest=true&ms=5600%3B36%3B%3B&ref=quickSearch&s=Car&sb=rel&vc=Car"
-
 output_dir: "."
 database_path: "data/corvette_tracker.sqlite"
 
 ai_enrichment:
   enabled: false
-  # Optional: dotted provider path loaded as `module:ClassName`.
-  # The class must implement analyze_listing(EnrichmentInput) -> EnrichmentResult.
-  # Example after copying/adapting examples/ai_provider_template.py:
-  # provider: "examples.ai_provider_template:ExampleVisionProvider"
   provider: null
   max_images: 8
 
 quality:
   enabled: true
-  # Live crawls below these numbers are treated as suspicious and return exit code 3.
   min_total: 10
   min_by_source:
     AutoScout24: 5
-    Kleinanzeigen: 10
+    Kleinanzeigen: 2
+    AutoUncle: 0
+    Classic Trader: 0
+    mobile.de: 0
 
 scoring:
-  # Score = base_score + matching preference weights - risk penalties, capped to 0..100.
-  # Current preference: Schalter sehr wichtig; kein Cabrio und kein LS2 wichtig; Trim mittel.
-  base_score: 20
-  weights:
-    manual_transmission: 30
-    non_convertible: 20
-    non_ls2: 20
-    preferred_trim: 10
-  preferred_trims:
-    - Grand Sport
-    - Z06
-    - ZR1
-  risk_penalties:
-    accident_reported: 18
-    damage_reported: 14
-    salvage_import_possible: 10
-    mileage_unclear: 8
-    no_tuv: 8
-    modified_heavily: 4
-    sold_or_reserved: 20
+  base_score: 50
+  mileage_threshold: 100000
+  mileage_max_deduction: 30
+  newer_year_bonus: 10
+  year_max_bonus: 20
+  price_min: 10000
+  price_max: 70000
+  price_target: 30000
+  price_max_deduction: 25
+  score_min: 15
