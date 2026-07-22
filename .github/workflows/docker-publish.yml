@@ -50,5 +50,5 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           gh api --method PATCH \
-            /users/${{ github.repository_owner }}/packages/container/${{ github.event.repository.name | downcase }}/visibility \
+            /users/${{ github.repository_owner }}/packages/container/corvettetracker/visibility \
             -f visibility="public"
