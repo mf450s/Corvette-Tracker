@@ -12,6 +12,7 @@ class StrEnum(str, Enum):
 
 class EngineType(StrEnum):
     """Known C6 Corvette engine codes."""
+
     LS2 = "LS2"
     LS3 = "LS3"
     LS7 = "LS7"
@@ -21,6 +22,7 @@ class EngineType(StrEnum):
 
 class SourceType(StrEnum):
     """Supported marketplace source identifiers."""
+
     AUTOSCOUT24 = "autoscout24"
     KLEINANZEIGEN = "kleinanzeigen"
     AUTOUNCLE = "autouncle"
@@ -30,6 +32,7 @@ class SourceType(StrEnum):
 
 class ExportFormat(StrEnum):
     """Supported export output formats."""
+
     MARKDOWN = "markdown"
     JSON = "json"
     CSV = "csv"
@@ -38,6 +41,7 @@ class ExportFormat(StrEnum):
 
 class LogLevel(StrEnum):
     """Logging verbosity levels."""
+
     DEBUG = "debug"
     INFO = "info"
     WARNING = "warning"

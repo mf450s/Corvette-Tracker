@@ -241,6 +241,7 @@ Table listings {
   seller_type seller_type [not null, default: 'unknown']
   seller_contact_hash varchar [note: "Optional hash only; avoid storing raw private contact data"]
   availability_status listing_status [not null, default: 'unknown']
+  hidden boolean [not null, default: false, note: "Manually hidden by user, excluded from default exports"]
   first_seen_at datetime [not null]
   last_seen_at datetime [not null]
   created_at datetime [not null]

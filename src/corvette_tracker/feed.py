@@ -112,7 +112,9 @@ def render_gallery(images: list[str], title: str) -> str:
     return f'<div class="gallery"><div class="gallery-count">{len(images)} Bilder</div><div class="gallery-strip">{thumbnails}</div></div>'
 
 
-def build_feed_payload(listings: list[Listing]) -> dict[str, Any]:
+def build_feed_payload(listings: list[Listing], *, show_hidden: bool = False) -> dict[str, Any]:
+    if not show_hidden:
+        listings = [l for l in listings if not l.hidden]
     ordered = sorted(listings, key=lambda item: (item.score, item.price_eur or 0), reverse=True)
     listing_dicts = [item.to_dict() for item in ordered]
     prices = [int(item["price_eur"]) for item in listing_dicts if item.get("price_eur") is not None]
