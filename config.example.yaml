@@ -1,3 +1,9 @@
+# ENUM REFERENCE — allowed values for type-safe config fields:
+# SourceType: autoscout24, kleinanzeigen, autouncle, classic_trader, mobile_de
+# EngineType: LS2, LS3, LS7, LS9, unknown
+# ExportFormat: markdown, json, csv, html
+# LogLevel: debug, info, warning, error
+
 sources:
   autoscout24:
     enabled: true

@@ -1,81 +1,29 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import shutil
 import sys
-from collections import Counter
 from pathlib import Path
 
-import yaml
-
-from .ai_enrichment import AIEnrichmentProvider, enrich_listings
-from .re_scrape import re_scrape_offer
-from .dedupe import assign_clusters
+from .ai_enrichment import enrich_listings
+from .config import (
+    DEFAULT_CONFIG,
+    load_ai_provider,
+    load_config,
+    validate_crawl_quality,
+)
+from .dedupe import assign_clusters, enrich_clusters
 from .feed import build_feed_payload, write_exports
 from .health import check_stale_offers
 from .models import Listing
-from .scoring import DEFAULT_SCORING_CONFIG, apply_scores, merge_scoring_config
+from .re_scrape import re_scrape_offer
+from .scoring import apply_scores
 from .sources.autouncle import DEFAULT_URL as AUTOUNCLE_URL, fetch_autouncle
 from .sources.autoscout24 import DEFAULT_URL as AS24_URL, fetch_autoscout24, parse_autoscout24_search
 from .sources.classic_trader import DEFAULT_URL as CLASSIC_TRADER_URL, fetch_classic_trader
 from .sources.kleinanzeigen import DEFAULT_URL as KA_URL, fetch_kleinanzeigen
 from .sources.mobile_de import DEFAULT_URL as MOBILE_URL, fetch_mobile_de
 from .storage import TrackerStore
-
-DEFAULT_CONFIG = {
-    "sources": {
-        "autoscout24": {"enabled": True, "url": AS24_URL, "urls": [AS24_URL]},
-        "kleinanzeigen": {"enabled": True, "url": KA_URL, "urls": [KA_URL]},
-        "autouncle": {"enabled": True, "url": AUTOUNCLE_URL, "urls": [AUTOUNCLE_URL, "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6"]},
-        "classic_trader": {"enabled": True, "url": CLASSIC_TRADER_URL, "urls": [CLASSIC_TRADER_URL, "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette/c6"]},
-        "mobile_de": {"enabled": True, "url": MOBILE_URL},
-    },
-    "output_dir": ".",
-    "database_path": "data/corvette_tracker.sqlite",
-    "ai_enrichment": {"enabled": False, "provider": None, "max_images": 8},
-    "quality": {
-        "enabled": True,
-        "min_total": 10,
-        "min_by_source": {"AutoScout24": 5, "Kleinanzeigen": 10},
-    },
-    "scoring": DEFAULT_SCORING_CONFIG,
-}
-
-
-def load_config(path: str | None) -> dict:
-    if not path:
-        return DEFAULT_CONFIG
-    with Path(path).open("r", encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle) or {}
-    merged = DEFAULT_CONFIG | loaded
-    merged["sources"] = DEFAULT_CONFIG["sources"] | loaded.get("sources", {})
-    merged["ai_enrichment"] = DEFAULT_CONFIG["ai_enrichment"] | loaded.get("ai_enrichment", {})
-    merged["quality"] = DEFAULT_CONFIG["quality"] | loaded.get("quality", {})
-    merged["scoring"] = merge_scoring_config(loaded.get("scoring"))
-    return merged
-
-
-def validate_crawl_quality(payload: dict, *, min_total: int, min_by_source: dict[str, int]) -> list[str]:
-    listings = payload.get("listings") or []
-    source_counts = Counter(str(item.get("source") or "unknown") for item in listings)
-    warnings: list[str] = []
-    if len(listings) < min_total:
-        warnings.append(f"Crawler quality: only {len(listings)} total listings parsed; expected at least {min_total}")
-    for source, expected in min_by_source.items():
-        actual = source_counts.get(source, 0)
-        if actual < expected:
-            warnings.append(f"Crawler quality: only {actual} {source} listings parsed; expected at least {expected}")
-    return warnings
-
-
-def load_ai_provider(dotted_path: str) -> AIEnrichmentProvider:
-    if ":" not in dotted_path:
-        raise ValueError("AI provider must use 'module:ClassName' format")
-    module_name, class_name = dotted_path.split(":", 1)
-    module = importlib.import_module(module_name)
-    provider_class = getattr(module, class_name)
-    return provider_class()
 
 
 def _copy_site_to_root(output_dir: Path) -> None:
@@ -142,6 +90,7 @@ def run_tracker(
     database: str | Path | None = None,
     ai_provider: str | None = None,
     ai_max_images: int | None = None,
+    show_hidden: bool = False,
 ) -> tuple[int, dict]:
     config = load_config(config_path)
     resolved_output_dir = Path(output_dir or config.get("output_dir", ".")).resolve()
@@ -157,6 +106,7 @@ def run_tracker(
         listings, warnings = collect_live(config)
 
     listings = assign_clusters(listings)
+    listings = enrich_clusters(listings)
     quality_warnings: list[str] = []
     quality_config = config.get("quality", {})
     if not fixture and quality_config.get("enabled", True):
@@ -179,7 +129,7 @@ def run_tracker(
     listings = apply_scores(listings, scoring_config)
     store = TrackerStore(db_path)
     changed = store.upsert_listings(listings)
-    payload = build_feed_payload(apply_scores(store.list_active(), scoring_config))
+    payload = build_feed_payload(apply_scores(store.list_active(), scoring_config), show_hidden=show_hidden)
     if warnings:
         payload["warnings"] = warnings
     write_exports(payload, resolved_output_dir)
@@ -197,6 +147,7 @@ def run(args: argparse.Namespace) -> int:
         database=args.database,
         ai_provider=args.ai_provider,
         ai_max_images=args.ai_max_images,
+        show_hidden=args.show_hidden,
     )
     for warning in payload.get("warnings", []):
         print(f"WARN {warning}", file=sys.stderr)
@@ -258,6 +209,36 @@ def run_scrape(args: argparse.Namespace) -> int:
     return 0 if result["success"] else 1
 
 
+def run_hide(args: argparse.Namespace) -> int:
+    """Mark a listing as hidden."""
+    database_path = Path(args.database or load_config(getattr(args, "config", None)).get("database_path", "data/corvette_tracker.sqlite"))
+    if not database_path.is_absolute():
+        database_path = Path.cwd() / database_path
+    store = TrackerStore(database_path)
+    try:
+        store.hide_listing(args.listing_id)
+        print(f"Angebot {args.listing_id} wurde versteckt")
+    except Exception as exc:
+        print(f"Fehler: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def run_unhide(args: argparse.Namespace) -> int:
+    """Unmark a hidden listing."""
+    database_path = Path(args.database or load_config(getattr(args, "config", None)).get("database_path", "data/corvette_tracker.sqlite"))
+    if not database_path.is_absolute():
+        database_path = Path.cwd() / database_path
+    store = TrackerStore(database_path)
+    try:
+        store.unhide_listing(args.listing_id)
+        print(f"Angebot {args.listing_id} ist wieder sichtbar")
+    except Exception as exc:
+        print(f"Fehler: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="corvette-tracker")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -268,6 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--database")
     run_parser.add_argument("--ai-provider", help="AI enrichment provider as module:ClassName")
     run_parser.add_argument("--ai-max-images", type=int, help="Maximum images per listing sent to AI enrichment")
+    run_parser.add_argument("--show-hidden", action="store_true", help="include hidden listings in exports")
     run_parser.set_defaults(func=run)
 
     health_parser = sub.add_parser("health", help="check online status of all known listings")
@@ -283,6 +265,16 @@ def main(argv: list[str] | None = None) -> int:
     scrape_parser.add_argument("--url", help="Direct URL of the offer")
     scrape_parser.add_argument("--database")
     scrape_parser.set_defaults(func=run_scrape)
+
+    hide_parser = sub.add_parser("hide", help="hide a listing from default exports")
+    hide_parser.add_argument("listing_id", help="ID of the listing to hide")
+    hide_parser.add_argument("--database")
+    hide_parser.set_defaults(func=run_hide)
+
+    unhide_parser = sub.add_parser("unhide", help="unhide a previously hidden listing")
+    unhide_parser.add_argument("listing_id", help="ID of the listing to unhide")
+    unhide_parser.add_argument("--database")
+    unhide_parser.set_defaults(func=run_unhide)
 
     args = parser.parse_args(argv)
     return args.func(args)
