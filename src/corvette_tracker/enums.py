@@ -3,7 +3,14 @@ from __future__ import annotations
 from enum import Enum
 
 
-class EngineType(str, Enum):
+class StrEnum(str, Enum):
+    """String enum that also inherits from str for YAML/JSON compatibility."""
+
+    def __str__(self) -> str:
+        return self.value
+
+
+class EngineType(StrEnum):
     """Known C6 Corvette engine codes."""
 
     LS2 = "LS2"
@@ -13,8 +20,8 @@ class EngineType(str, Enum):
     UNKNOWN = "unknown"
 
 
-class SourceType(str, Enum):
-    """Known marketplace sources."""
+class SourceType(StrEnum):
+    """Supported marketplace source identifiers."""
 
     AUTOSCOUT24 = "autoscout24"
     KLEINANZEIGEN = "kleinanzeigen"
@@ -23,8 +30,8 @@ class SourceType(str, Enum):
     MOBILE_DE = "mobile_de"
 
 
-class ExportFormat(str, Enum):
-    """Supported feed export formats."""
+class ExportFormat(StrEnum):
+    """Supported export output formats."""
 
     MARKDOWN = "markdown"
     JSON = "json"
@@ -32,8 +39,8 @@ class ExportFormat(str, Enum):
     HTML = "html"
 
 
-class LogLevel(str, Enum):
-    """Log verbosity levels."""
+class LogLevel(StrEnum):
+    """Logging verbosity levels."""
 
     DEBUG = "debug"
     INFO = "info"

@@ -4,6 +4,7 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 from .ai_enrichment import enrich_listings
 from .config import (
@@ -129,7 +130,10 @@ def run_tracker(
     listings = apply_scores(listings, scoring_config)
     store = TrackerStore(db_path)
     changed = store.upsert_listings(listings)
-    payload = build_feed_payload(apply_scores(store.list_active(), scoring_config), show_hidden=show_hidden)
+    payload = build_feed_payload(
+        apply_scores(store.list_active(), scoring_config),
+        show_hidden=show_hidden,
+    )
     if warnings:
         payload["warnings"] = warnings
     write_exports(payload, resolved_output_dir)
@@ -182,8 +186,7 @@ def run_health(args: argparse.Namespace) -> int:
             f"checked={summary['checked']}\n"
             f"online={summary['online']}\n"
             f"offline={summary['offline']}\n"
-            f"failed={summary['failed']}\n"
-            f"total={summary['total']}\n",
+            f"failed={summary['failed']}\n",
         )
 
     return 0 if summary["failed"] == 0 else 1
@@ -215,12 +218,8 @@ def run_hide(args: argparse.Namespace) -> int:
     if not database_path.is_absolute():
         database_path = Path.cwd() / database_path
     store = TrackerStore(database_path)
-    try:
-        store.hide_listing(args.listing_id)
-        print(f"Angebot {args.listing_id} wurde versteckt")
-    except Exception as exc:
-        print(f"Fehler: {exc}", file=sys.stderr)
-        return 1
+    store.hide_listing(args.listing_id)
+    print(f"Angebot {args.listing_id} wurde versteckt")
     return 0
 
 
@@ -230,18 +229,15 @@ def run_unhide(args: argparse.Namespace) -> int:
     if not database_path.is_absolute():
         database_path = Path.cwd() / database_path
     store = TrackerStore(database_path)
-    try:
-        store.unhide_listing(args.listing_id)
-        print(f"Angebot {args.listing_id} ist wieder sichtbar")
-    except Exception as exc:
-        print(f"Fehler: {exc}", file=sys.stderr)
-        return 1
+    store.unhide_listing(args.listing_id)
+    print(f"Angebot {args.listing_id} ist wieder sichtbar")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="corvette-tracker")
     sub = parser.add_subparsers(dest="command", required=True)
+
     run_parser = sub.add_parser("run", help="crawl sources, update sqlite, export website/feed")
     run_parser.add_argument("--config")
     run_parser.add_argument("--fixture", help="parse a local AutoScout24-like fixture instead of live crawling")
@@ -249,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--database")
     run_parser.add_argument("--ai-provider", help="AI enrichment provider as module:ClassName")
     run_parser.add_argument("--ai-max-images", type=int, help="Maximum images per listing sent to AI enrichment")
-    run_parser.add_argument("--show-hidden", action="store_true", help="include hidden listings in exports")
+    run_parser.add_argument("--show-hidden", action="store_true", help="Include hidden listings in exports")
     run_parser.set_defaults(func=run)
 
     health_parser = sub.add_parser("health", help="check online status of all known listings")
@@ -266,13 +262,17 @@ def main(argv: list[str] | None = None) -> int:
     scrape_parser.add_argument("--database")
     scrape_parser.set_defaults(func=run_scrape)
 
-    hide_parser = sub.add_parser("hide", help="hide a listing from default exports")
-    hide_parser.add_argument("listing_id", help="ID of the listing to hide")
+    hide_parser = sub.add_parser("hide", help="hide a listing from overview/exports")
+    hide_parser.add_argument("listing_id", help="Listing database ID (primary key)")
+    hide_parser.add_argument("--config")
+    hide_parser.add_argument("--output-dir")
     hide_parser.add_argument("--database")
     hide_parser.set_defaults(func=run_hide)
 
-    unhide_parser = sub.add_parser("unhide", help="unhide a previously hidden listing")
-    unhide_parser.add_argument("listing_id", help="ID of the listing to unhide")
+    unhide_parser = sub.add_parser("unhide", help="unhide a listing and show it in overview/exports again")
+    unhide_parser.add_argument("listing_id", help="Listing database ID (primary key)")
+    unhide_parser.add_argument("--config")
+    unhide_parser.add_argument("--output-dir")
     unhide_parser.add_argument("--database")
     unhide_parser.set_defaults(func=run_unhide)
 
