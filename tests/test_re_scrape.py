@@ -149,21 +149,73 @@ def test_kleinanzeigen_fetch_failure(mock_fetch_html, store: TrackerStore) -> No
     assert status["is_online"] == 0
 
 
-# ── re_scrape_offer: generic re-verify ────────────────────────────────────
+# ── re_scrape_offer: AutoScout24 full re-scrape ──────────────────────
+
+
+AS24_DETAIL_HTML = '''\
+<html><body><script id="__NEXT_DATA__" type="application/json">
+{"props":{"pageProps":{"listingDetails":{"id":"e65b455d-a2cc-4bb9-adbd-77189c0a0dc4","url":"/angebote/corvette-zr1-benzin-gelb-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4","price":{"priceRaw":119980,"priceFormatted":"€ 119.980"},"images":["https://prod.pictures.autoscout24.net/listing-images/e65b455d-a2cc-4bb9-adbd-77189c0a0dc4_9b8bede3-1558-4705-b93c-45e369c0882e.jpg/1280x960.webp","https://prod.pictures.autoscout24.net/listing-images/e65b455d-a2cc-4bb9-adbd-77189c0a0dc4_fc79520e-612a-4d48-ac3c-883cbd4dc94a.jpg/1280x960.webp","https://prod.pictures.autoscout24.net/listing-images/e65b455d-a2cc-4bb9-adbd-77189c0a0dc4_ca65c50c-e2ce-4af2-bac1-a392f098ebd9.jpg/1280x960.webp"],"location":{"zip":"8301","city":"Kainbach bei Graz"},"vehicle":{"make":"Chevrolet","model":"Corvette","modelVersionInput":"ZR1","mileageInKmRaw":39801,"firstRegistrationDate":"2010-06-01","powerInHp":647,"gearbox":"Manual","bodyType":"Coupe"},"vehicleDetails":[{"label":"Getriebe","data":"Schaltgetriebe"},{"label":"Karosserieform","data":"Coupé"},{"label":"Leistung","data":"476 kW (647 PS)"},{"label":"Kilometerstand","data":"39.801 km"}]}}}}
+</script></body></html>
+'''
 
 
 @patch("corvette_tracker.re_scrape.fetch_html")
-def test_generic_source_verify(mock_fetch_html, store: TrackerStore) -> None:
-    """Non-Kleinanzeigen sources are re-verified (URL check + timestamp bump)."""
+def test_autoscout24_with_existing_listing(mock_fetch_html, store: TrackerStore) -> None:
+    """Re-scrape AutoScout24 via offer_id — parses __NEXT_DATA__ for images."""
     listing = Listing(
-        id="autoscout24_def456",
+        id="autoscout24_e65b455d",
         source="AutoScout24",
-        source_listing_id="def456",
-        url="https://www.autoscout24.de/angebote/corvette-xyz",
-        title="Corvette C6 Test AS24",
-        price_eur=28000,
-        mileage_km=90000,
-        score=55,
+        source_listing_id="e65b455d-a2cc-4bb9-adbd-77189c0a0dc4",
+        url="https://www.autoscout24.de/angebote/corvette-zr1-benzin-gelb-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4",
+        title="Chevrolet Corvette ZR1",
+        price_eur=119980,
+        mileage_km=39801,
+        image_urls=[],
+        score=85,
+    )
+    store.upsert_listings([listing])
+    mock_fetch_html.return_value = AS24_DETAIL_HTML
+
+    result = re_scrape_offer(store, offer_id=listing.id)
+
+    assert result["success"] is True, f"re-scrape failed: {result}"
+    assert result["action"] == "re_scraped"
+    assert result["source"] == "AutoScout24"
+
+    # Verify images were extracted from __NEXT_DATA__
+    updated = store.get_listing(listing.id)
+    assert updated is not None
+    assert len(updated.image_urls) == 3
+    assert all("1920x1080.webp" in url for url in updated.image_urls)
+
+
+@patch("corvette_tracker.re_scrape.fetch_html")
+def test_autoscout24_with_url_only(mock_fetch_html, store: TrackerStore) -> None:
+    """Re-scrape AutoScout24 via URL — listing not yet in DB, built from scratch."""
+    url = "https://www.autoscout24.de/angebote/corvette-zr1-benzin-gelb-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
+    mock_fetch_html.return_value = AS24_DETAIL_HTML
+
+    result = re_scrape_offer(store, url=url)
+
+    assert result["success"] is True, f"re-scrape failed: {result}"
+    assert result["action"] == "re_scraped"
+    assert result["source"] == "AutoScout24"
+    assert "Bilder" in result["message"]
+
+
+@patch("corvette_tracker.re_scrape.fetch_html")
+def test_autoscout24_empty_next_data(mock_fetch_html, store: TrackerStore) -> None:
+    """AutoScout24 detail page without __NEXT_DATA__ falls through gracefully."""
+    listing = Listing(
+        id="autoscout24_noimg",
+        source="AutoScout24",
+        source_listing_id="noimg",
+        url="https://www.autoscout24.de/angebote/corvette-c6-noimg",
+        title="Corvette C6",
+        price_eur=20000,
+        mileage_km=100000,
+        image_urls=[],
+        score=40,
     )
     store.upsert_listings([listing])
     mock_fetch_html.return_value = "<html><body><h1>Corvette C6</h1></body></html>"
@@ -171,8 +223,33 @@ def test_generic_source_verify(mock_fetch_html, store: TrackerStore) -> None:
     result = re_scrape_offer(store, offer_id=listing.id)
 
     assert result["success"] is True
+    assert result["action"] == "re_scraped"
+
+
+# ── re_scrape_offer: generic re-verify ────────────────────────────────────
+
+
+@patch("corvette_tracker.re_scrape.fetch_html")
+def test_generic_source_verify(mock_fetch_html, store: TrackerStore) -> None:
+    """Sources without detail-parsing fall through to re-verify."""
+    listing = Listing(
+        id="autouncle_abc123",
+        source="AutoUncle",
+        source_listing_id="abc123",
+        url="https://www.autouncle.de/de/d/chevrolet-corvette-xyz",
+        title="Chevrolet Corvette",
+        price_eur=35000,
+        mileage_km=70000,
+        score=55,
+    )
+    store.upsert_listings([listing])
+    mock_fetch_html.return_value = "<html><body><h1>Corvette</h1></body></html>"
+
+    result = re_scrape_offer(store, offer_id=listing.id)
+
+    assert result["success"] is True
     assert result["action"] == "verified"
-    assert result["source"] == "AutoScout24"
+    assert result["source"] == "AutoUncle"
 
 
 @patch("corvette_tracker.re_scrape.fetch_html")

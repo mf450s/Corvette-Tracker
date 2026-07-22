@@ -127,6 +127,78 @@ def _re_scrape_kleinanzeigen(
     }
 
 
+def _re_scrape_autoscout24(
+    store: TrackerStore,
+    existing_listing: Listing | None,
+    url: str,
+    html: str,
+    *,
+    caller_hint_id: str | None = None,
+) -> dict[str, Any]:
+    """Re-scrape a single AutoScout24 detail page.
+
+    AutoScout24 detail pages embed listing data including full-resolution
+    image URLs in a ``__NEXT_DATA__`` script tag.  This function parses
+    the HTML via ``_parse_next_data`` and merges fresh images and other
+    fields into the existing listing.
+    """
+    from .sources.autoscout24 import normalize_autoscout24_image_url, parse_autoscout24_search
+
+    listing = existing_listing
+
+    # If no existing listing, try to build one from the detail page HTML
+    if listing is None:
+        from .normalize import canonical_url, stable_id
+
+        c_url = canonical_url(url)
+        listing_id = stable_id("AutoScout24", None, c_url)
+        listing = store.get_listing(listing_id)
+
+    # Parse the detail page — parse_autoscout24_search uses __NEXT_DATA__
+    parsed_listings = parse_autoscout24_search(html, url)
+    if parsed_listings:
+        fresh = parsed_listings[0]
+        if listing is None:
+            listing = fresh
+        else:
+            # Merge fresh image URLs (detail page has full resolution)
+            if fresh.image_urls:
+                listing.image_urls = [
+                    normalize_autoscout24_image_url(u) for u in fresh.image_urls
+                ]
+            # Update price/mileage if the detail page shows different values
+            if fresh.price_eur is not None:
+                listing.price_eur = fresh.price_eur
+            if fresh.mileage_km is not None:
+                listing.mileage_km = fresh.mileage_km
+
+    if listing is None:
+        return {
+            "success": False,
+            "listing_id": caller_hint_id,
+            "source": "AutoScout24",
+            "action": "parse_failed",
+            "message": f"Konnte kein Listing aus {url} parsen",
+        }
+
+    saved = store.upsert_listings([listing])
+    store.update_online_status(listing.id, is_online=True, http_status=200)
+
+    change = saved[0].change_type if saved else "unknown"
+    return {
+        "success": True,
+        "listing_id": listing.id,
+        "source": "AutoScout24",
+        "action": "re_scraped",
+        "change_type": change,
+        "message": (
+            f"Angebot {listing.id} ({listing.title}) neu gescraped: "
+            f"{change}, {listing.price_eur} €, {listing.mileage_km} km, "
+            f"{len(listing.image_urls)} Bilder"
+        ),
+    }
+
+
 def _re_verify_generic(
     store: TrackerStore,
     existing_listing: Listing,
@@ -169,6 +241,8 @@ def re_scrape_offer(
 
     - **Kleinanzeigen** — fetches and parses the detail page using the same
       logic as ``fetch_kleinanzeigen()``.
+    - **AutoScout24** — parses the detail page's ``__NEXT_DATA__`` JSON to
+      extract full-resolution images and current price/mileage.
 
     Other sources are **re-verified**: the URL is confirmed reachable,
     ``last_seen_at`` is bumped, and the online status is refreshed, but no
@@ -251,6 +325,11 @@ def re_scrape_offer(
     # ── 4. Source-specific re-scrape ────────────────────────────────────
     if source == "Kleinanzeigen":
         return _re_scrape_kleinanzeigen(
+            store, listing, fetch_target, html, caller_hint_id=caller_hint,
+        )
+
+    if source == "AutoScout24":
+        return _re_scrape_autoscout24(
             store, listing, fetch_target, html, caller_hint_id=caller_hint,
         )
 
