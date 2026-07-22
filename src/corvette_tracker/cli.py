@@ -6,54 +6,22 @@ import shutil
 import sys
 from collections import Counter
 from pathlib import Path
-
-import yaml
+from typing import Any
 
 from .ai_enrichment import AIEnrichmentProvider, enrich_listings
+from .config import load_config
 from .re_scrape import re_scrape_offer
 from .dedupe import assign_clusters
 from .feed import build_feed_payload, write_exports
 from .health import check_stale_offers
 from .models import Listing
-from .scoring import DEFAULT_SCORING_CONFIG, apply_scores, merge_scoring_config
+from .scoring import apply_scores
 from .sources.autouncle import DEFAULT_URL as AUTOUNCLE_URL, fetch_autouncle
 from .sources.autoscout24 import DEFAULT_URL as AS24_URL, fetch_autoscout24, parse_autoscout24_search
 from .sources.classic_trader import DEFAULT_URL as CLASSIC_TRADER_URL, fetch_classic_trader
 from .sources.kleinanzeigen import DEFAULT_URL as KA_URL, fetch_kleinanzeigen
 from .sources.mobile_de import DEFAULT_URL as MOBILE_URL, fetch_mobile_de
 from .storage import TrackerStore
-
-DEFAULT_CONFIG = {
-    "sources": {
-        "autoscout24": {"enabled": True, "url": AS24_URL, "urls": [AS24_URL]},
-        "kleinanzeigen": {"enabled": True, "url": KA_URL, "urls": [KA_URL]},
-        "autouncle": {"enabled": True, "url": AUTOUNCLE_URL, "urls": [AUTOUNCLE_URL, "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6"]},
-        "classic_trader": {"enabled": True, "url": CLASSIC_TRADER_URL, "urls": [CLASSIC_TRADER_URL, "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette/c6"]},
-        "mobile_de": {"enabled": True, "url": MOBILE_URL},
-    },
-    "output_dir": ".",
-    "database_path": "data/corvette_tracker.sqlite",
-    "ai_enrichment": {"enabled": False, "provider": None, "max_images": 8},
-    "quality": {
-        "enabled": True,
-        "min_total": 10,
-        "min_by_source": {"AutoScout24": 5, "Kleinanzeigen": 10},
-    },
-    "scoring": DEFAULT_SCORING_CONFIG,
-}
-
-
-def load_config(path: str | None) -> dict:
-    if not path:
-        return DEFAULT_CONFIG
-    with Path(path).open("r", encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle) or {}
-    merged = DEFAULT_CONFIG | loaded
-    merged["sources"] = DEFAULT_CONFIG["sources"] | loaded.get("sources", {})
-    merged["ai_enrichment"] = DEFAULT_CONFIG["ai_enrichment"] | loaded.get("ai_enrichment", {})
-    merged["quality"] = DEFAULT_CONFIG["quality"] | loaded.get("quality", {})
-    merged["scoring"] = merge_scoring_config(loaded.get("scoring"))
-    return merged
 
 
 def validate_crawl_quality(payload: dict, *, min_total: int, min_by_source: dict[str, int]) -> list[str]:
@@ -142,6 +110,7 @@ def run_tracker(
     database: str | Path | None = None,
     ai_provider: str | None = None,
     ai_max_images: int | None = None,
+    show_hidden: bool = False,
 ) -> tuple[int, dict]:
     config = load_config(config_path)
     resolved_output_dir = Path(output_dir or config.get("output_dir", ".")).resolve()
@@ -179,7 +148,10 @@ def run_tracker(
     listings = apply_scores(listings, scoring_config)
     store = TrackerStore(db_path)
     changed = store.upsert_listings(listings)
-    payload = build_feed_payload(apply_scores(store.list_active(), scoring_config))
+    all_listings = apply_scores(store.list_active(), scoring_config)
+    if not show_hidden:
+        all_listings = [l for l in all_listings if not l.hidden]
+    payload = build_feed_payload(all_listings)
     if warnings:
         payload["warnings"] = warnings
     write_exports(payload, resolved_output_dir)
@@ -197,6 +169,7 @@ def run(args: argparse.Namespace) -> int:
         database=args.database,
         ai_provider=args.ai_provider,
         ai_max_images=args.ai_max_images,
+        show_hidden=getattr(args, "show_hidden", False),
     )
     for warning in payload.get("warnings", []):
         print(f"WARN {warning}", file=sys.stderr)
@@ -258,6 +231,38 @@ def run_scrape(args: argparse.Namespace) -> int:
     return 0 if result["success"] else 1
 
 
+def run_hide(args: argparse.Namespace) -> int:
+    """Hide a listing by its ID."""
+    database_path = Path(args.database or load_config(getattr(args, "config", None)).get("database_path", "data/corvette_tracker.sqlite"))
+    if not database_path.is_absolute():
+        output_dir = Path(getattr(args, "output_dir", ".")).resolve()
+        database_path = output_dir / database_path
+    store = TrackerStore(database_path)
+    try:
+        listing = store.hide_listing(args.listing_id)
+        print(f"[OK] Listing {listing.id} ({listing.title}) hidden")
+        return 0
+    except KeyError:
+        print(f"[FEHLGESCHLAGEN] Kein Listing mit ID {args.listing_id} in der Datenbank")
+        return 1
+
+
+def run_unhide(args: argparse.Namespace) -> int:
+    """Unhide a previously hidden listing."""
+    database_path = Path(args.database or load_config(getattr(args, "config", None)).get("database_path", "data/corvette_tracker.sqlite"))
+    if not database_path.is_absolute():
+        output_dir = Path(getattr(args, "output_dir", ".")).resolve()
+        database_path = output_dir / database_path
+    store = TrackerStore(database_path)
+    try:
+        listing = store.unhide_listing(args.listing_id)
+        print(f"[OK] Listing {listing.id} ({listing.title}) unhidden")
+        return 0
+    except KeyError:
+        print(f"[FEHLGESCHLAGEN] Kein Listing mit ID {args.listing_id} in der Datenbank")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="corvette-tracker")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -268,6 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--database")
     run_parser.add_argument("--ai-provider", help="AI enrichment provider as module:ClassName")
     run_parser.add_argument("--ai-max-images", type=int, help="Maximum images per listing sent to AI enrichment")
+    run_parser.add_argument("--show-hidden", action="store_true", help="Include hidden listings in exports")
     run_parser.set_defaults(func=run)
 
     health_parser = sub.add_parser("health", help="check online status of all known listings")
@@ -283,6 +289,20 @@ def main(argv: list[str] | None = None) -> int:
     scrape_parser.add_argument("--url", help="Direct URL of the offer")
     scrape_parser.add_argument("--database")
     scrape_parser.set_defaults(func=run_scrape)
+
+    hide_parser = sub.add_parser("hide", help="hide a listing from overview/exports")
+    hide_parser.add_argument("listing_id", help="Listing database ID (primary key)")
+    hide_parser.add_argument("--config")
+    hide_parser.add_argument("--output-dir")
+    hide_parser.add_argument("--database")
+    hide_parser.set_defaults(func=run_hide)
+
+    unhide_parser = sub.add_parser("unhide", help="unhide a listing and show it in overview/exports again")
+    unhide_parser.add_argument("listing_id", help="Listing database ID (primary key)")
+    unhide_parser.add_argument("--config")
+    unhide_parser.add_argument("--output-dir")
+    unhide_parser.add_argument("--database")
+    unhide_parser.set_defaults(func=run_unhide)
 
     args = parser.parse_args(argv)
     return args.func(args)
