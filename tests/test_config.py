@@ -96,6 +96,7 @@ def test_default_config_contains_user_preference_scoring_weights():
     assert weights.manual_transmission > weights.non_convertible
     assert default.scoring.preferred_trims == ["Grand Sport", "Z06", "ZR1"]
     assert default.scoring.risk_penalties is not None
+    assert default.scoring.total_budget == 80
 
 
 def test_load_config_deep_merges_scoring_weights(tmp_path):

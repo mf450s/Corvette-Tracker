@@ -350,7 +350,7 @@ def test_api_filter_combined(tmp_path):
     thread.start()
     base_url = f"http://127.0.0.1:{server.server_address[1]}"
     try:
-        qs = "source=Kleinanzeigen&transmission=manual&body_style=Coup%C3%A9&score_min=60&price_min=35000"
+        qs = "source=Kleinanzeigen&transmission=manual&body_style=Coup%C3%A9&score_min=50&price_min=35000"
         status, payload = _make_filtered_request(base_url, qs)
         assert status == 200
         ids = {l["id"] for l in payload["listings"]}
