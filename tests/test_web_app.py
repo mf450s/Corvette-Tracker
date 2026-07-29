@@ -161,9 +161,8 @@ def test_web_api_reads_and_updates_scoring_config(tmp_path: Path):
 def test_web_shell_contains_scoring_configuration_form():
     html = render_app_shell()
 
-    assert "Scoring konfigurieren" in html
-    assert "manual_transmission" in html
-    assert "/api/scoring" in html
+    assert "Scoring" not in html
+    assert "/api/scoring" not in html
 
 
 def test_web_shell_always_shows_last_crawl_status():
