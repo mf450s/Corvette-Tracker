@@ -114,8 +114,11 @@ def extract_engine(text: str) -> str | None:
             return code
     if re.search(r"(?<!\d)7[,.]0\s*(?:L|V8|V\s*8|$)", upper):
         return "LS7"
-    if "KOMPRESSOR" in upper or "ZR1" in upper:
-        return "LS9"
+    # "ZR1" → LS9 only when context is credible: no contradicting body-style
+    # evidence (ZR1 was never a Cabrio) and "ZR1" is not just a style/accessory mention.
+    if "ZR1" in upper and "CABRIO" not in upper and "CONVERTIBLE" not in upper:
+        if not re.search(r"\bZR1\s+(?:STYLE|OPTIK|FELGEN|SPOILER|LOOK|EMBLEM|BADGE|REPLIKA|UMBAU|KIT|GRILL|HOOD|FENDER|RIMS|WHEELS|DECAL)", upper):
+            return "LS9"
     if re.search(r"(?<!\d)6[,.]2\s*(?:L|V8|V\s*8|$)", upper):
         return "LS3"
     if re.search(r"(?<!\d)6[,.]0\s*(?:L|V8|V\s*8|$)", upper):
