@@ -27,7 +27,8 @@ DOMAIN_DELAY_SECONDS = 1.0
 NOT_FOUND_PATTERNS: list[re.Pattern] = [
     re.compile(r"anzeige\s+(?:wurde\s+)?(?:leider\s+)?nicht\s+gefunden", re.I),
     re.compile(r"die\s+gesuchte\s+anzeige\s+ist\s+nicht\s+mehr\s+vorhanden", re.I),
-    re.compile(r"seite\s+nicht\s+gefunden", re.I),
+    re.compile(r"<title>[^<]*nicht\s+gefunden[^<]*</title>", re.I | re.S),
+    re.compile(r"<h1[^>]*>[^<]*nicht\s+gefunden[^<]*</h1>", re.I | re.S),
     re.compile(r"dieses\s+(?:angebot|inserat|objekt)\s+(?:ist\s+)?nicht\s+mehr\s+(?:vorhanden|verfügbar|verfuegbar)", re.I),
     re.compile(r"listing\s+(?:is\s+)?(?:no\s+longer\s+)?not\s+found", re.I),
     re.compile(r"offer\s+(?:is\s+)?(?:no\s+longer\s+)?(?:available|found)", re.I),
@@ -35,7 +36,16 @@ NOT_FOUND_PATTERNS: list[re.Pattern] = [
     re.compile(r"404\s+not\s+found", re.I),
     re.compile(r"dieses\s+objekt\s+wurde\s+entfernt", re.I),
     re.compile(r"this\s+(?:ad|listing)\s+(?:has\s+been\s+)?removed", re.I),
+    re.compile(r"gelöscht", re.I),
+    re.compile(r"showDeletedVeil\s*:\s*true", re.I),
+    re.compile(r"showPausedVeil\s*:\s*true", re.I),
 ]
+
+# Realistic browser User-Agent to avoid bot blocking/redirects
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -101,6 +111,7 @@ def _check_single_url(url: str) -> tuple[int | None, str | None]:
 
     def _do_request(method: str):
         req = urllib.request.Request(url, method=method)
+        req.add_header("User-Agent", BROWSER_USER_AGENT)
         opener = urllib.request.build_opener(_NoRedirectHandler())
         return opener.open(req, timeout=CHECK_TIMEOUT)
 
@@ -127,7 +138,7 @@ def _check_single_url(url: str) -> tuple[int | None, str | None]:
                     continue
 
                 # 2xx from GET: check response body for 'not found' indicators
-                raw_body = response.read(65536)  # 64KB max
+                raw_body = response.read(262144)  # 256KB max
                 try:
                     charset = response.headers.get_content_charset() or "utf-8"
                     body = raw_body.decode(charset, errors="replace")
@@ -140,9 +151,9 @@ def _check_single_url(url: str) -> tuple[int | None, str | None]:
                         url,
                     )
                     return 410, "not found body"  # 410 Gone semantics
-                if len(raw_body) >= 65536:
+                if len(raw_body) >= 262144:
                     log.debug(
-                        "Body truncated for %s (>64KB), content check limited",
+                        "Body truncated for %s (>256KB), content check limited",
                         url,
                     )
 
