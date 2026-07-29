@@ -70,7 +70,7 @@ def score_listing(listing: Listing, config: dict[str, Any] | None = None) -> int
         score += _int_value(weights.get("preferred_trim"))
 
     penalties = scoring.get("risk_penalties") or {}
-    score -= sum(_int_value(penalties.get(flag)) for flag in listing.risk_flags)
+    score -= sum(_int_value(penalties.get(flag)) for flag in (listing.risk_flags or []))
     return max(0, min(100, score))
 
 

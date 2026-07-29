@@ -264,11 +264,34 @@ class TrackerStore:
         row = self.conn.execute("SELECT payload_json FROM listings WHERE id = ?", (listing_id,)).fetchone()
         if row is None:
             return None
-        return Listing(**json.loads(row["payload_json"]))
+        return self._deserialize_listing(row["payload_json"])
+
+    @staticmethod
+    def _deserialize_listing(payload: str) -> Listing:
+        """Deserialize a listing from JSON, normalizing None list/dict fields."""
+        data = json.loads(payload)
+        # Ensure list/dict fields that were stored as null become empty defaults
+        if data.get("risk_flags") is None:
+            data["risk_flags"] = []
+        if data.get("equipment") is None:
+            data["equipment"] = []
+        if data.get("image_urls") is None:
+            data["image_urls"] = []
+        if data.get("visual_flags") is None:
+            data["visual_flags"] = []
+        if data.get("inference_notes") is None:
+            data["inference_notes"] = []
+        if data.get("conflict_flags") is None:
+            data["conflict_flags"] = []
+        if data.get("validation_flags") is None:
+            data["validation_flags"] = []
+        if data.get("ai_enrichment") is None:
+            data["ai_enrichment"] = {}
+        return Listing(**data)
 
     def list_active(self) -> list[Listing]:
         rows = self.conn.execute("SELECT payload_json FROM listings ORDER BY COALESCE(price_eur, 999999999), id").fetchall()
-        return [Listing(**json.loads(row["payload_json"])) for row in rows]
+        return [self._deserialize_listing(row["payload_json"]) for row in rows]
 
     def listing_history(self, listing_id: str, limit: int = 50) -> list[dict[str, Any]]:
         rows = self.conn.execute(
