@@ -263,3 +263,27 @@ def test_show_hidden_includes_hidden_listings(tmp_path: Path):
     assert "a" in ids
     assert "b" in ids
     assert payload["summary"]["total_active"] == 2
+
+
+# ── Upsert error reporting ──────────────────────────────────────────────
+
+
+def test_upsert_logs_failures_and_still_stores_valid(tmp_path: Path, caplog):
+    import logging
+
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+
+    invalid = make_listing(id="invalid")
+    invalid.url = "https://example.test/listing/invalid"
+    invalid.price_eur = ["bad"]  # unsupported type for SQLite INT column
+
+    valid = make_listing(id="valid", price=30000)
+
+    with caplog.at_level(logging.ERROR, logger="corvette_tracker.storage"):
+        results = store.upsert_listings([invalid, valid])
+
+    assert len(results) == 1
+    assert results[0].id == "valid"
+    assert store.get_listing("valid") is not None
+    assert store.get_listing("invalid") is None
+    assert "1/2 listings failed" in caplog.text

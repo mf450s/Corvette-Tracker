@@ -136,6 +136,11 @@ def run_tracker(
     )
     if warnings:
         payload["warnings"] = warnings
+    if len(changed) != len(listings):
+        payload.setdefault("warnings", []).append(
+            f"upsert: {len(listings) - len(changed)} von {len(listings)} "
+            "Listings konnten nicht gespeichert werden"
+        )
     write_exports(payload, resolved_output_dir)
     _copy_site_to_root(resolved_output_dir)
     if quality_warnings:
