@@ -344,13 +344,11 @@ def render_app_shell() -> str:
 </head>
 <body>
   <header>
-    <p class="muted">Frontend + Backend laufen zusammen im Container</p>
     <h1>Corvette Tracker WebUI</h1>
-    <p class="muted">Manuelle Nachbesserungen werden als Overrides gespeichert und bei späteren Crawls nicht überschrieben.</p>
     <div class="toolbar"><button id="run">Jetzt crawlen</button><span id="status" class="status muted"></span></div>
     <p class="crawl-meta">Letzter Crawl: <strong id="last-crawl">noch nie</strong></p>
   </header>
-  <main class="wrap"><section class="panel"><h2>Scoring konfigurieren</h2><p class="muted">Standard: Schalter sehr wichtig, kein Cabrio wichtig, kein LS2 wichtig, Trim mittel. Werte werden in config.yaml gespeichert.</p><form id="scoring-form" class="score-form"><label>Schalter<input name="manual_transmission" type="number" min="0" max="100" data-score-weight="manual_transmission"></label><label>Kein Cabrio<input name="non_convertible" type="number" min="0" max="100" data-score-weight="non_convertible"></label><label>Kein LS2<input name="non_ls2" type="number" min="0" max="100" data-score-weight="non_ls2"></label><label>Trim<input name="preferred_trim" type="number" min="0" max="100" data-score-weight="preferred_trim"></label><label>Trims<input name="preferred_trims" placeholder="Grand Sport, Z06, ZR1"></label><button>Scoring speichern</button></form></section><section class="panel list-toolbar"><div><h2>Listings</h2><p class="muted">Filter und Sortierung — Status wird live vom Backend geholt.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label class="muted">Suche<input id="text-search" class="filter-input" type="text" placeholder="Titel, Beschreibung&hellip;"></label><label class="muted">Status<select id="status-filter"><option value="all">Alle</option><option value="online">Online</option><option value="offline">Offline</option></select></label><label class="muted">Quelle<select id="source-filter"><option value="all">Alle</option><option value="AutoScout24">AutoScout24</option><option value="AutoUncle">AutoUncle</option><option value="Kleinanzeigen">Kleinanzeigen</option></select></label><label class="muted">Getriebe<select id="transmission-filter"><option value="all">Alle</option><option value="manual">Schalter</option><option value="automatic">Automatik</option></select></label><label class="muted">Trim<select id="trim-filter"><option value="all">Alle</option><option value="Base">Base</option><option value="Grand Sport">Grand Sport</option><option value="Z06">Z06</option><option value="ZR1">ZR1</option></select></label><label class="muted">Motor<select id="engine-filter"><option value="all">Alle</option><option value="LS2">LS2</option><option value="LS3">LS3</option><option value="LS7">LS7</option><option value="LS9">LS9</option></select></label><label class="muted">Karosserie<select id="body-filter"><option value="all">Alle</option><option value="Cabrio">Cabrio</option><option value="Coupé">Coupé</option><option value="Targa">Targa</option></select></label></div>
+  <main class="wrap"><section class="panel list-toolbar"><div><h2>Listings</h2></div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label class="muted">Suche<input id="text-search" class="filter-input" type="text" placeholder="Titel, Beschreibung&hellip;"></label><label class="muted">Status<select id="status-filter"><option value="all">Alle</option><option value="online">Online</option><option value="offline">Offline</option></select></label><label class="muted">Quelle<select id="source-filter"><option value="all">Alle</option><option value="AutoScout24">AutoScout24</option><option value="AutoUncle">AutoUncle</option><option value="Kleinanzeigen">Kleinanzeigen</option></select></label><label class="muted">Getriebe<select id="transmission-filter"><option value="all">Alle</option><option value="manual">Schalter</option><option value="automatic">Automatik</option></select></label><label class="muted">Trim<select id="trim-filter"><option value="all">Alle</option><option value="Base">Base</option><option value="Grand Sport">Grand Sport</option><option value="Z06">Z06</option><option value="ZR1">ZR1</option></select></label><label class="muted">Motor<select id="engine-filter"><option value="all">Alle</option><option value="LS2">LS2</option><option value="LS3">LS3</option><option value="LS7">LS7</option><option value="LS9">LS9</option></select></label><label class="muted">Karosserie<select id="body-filter"><option value="all">Alle</option><option value="Cabrio">Cabrio</option><option value="Coupé">Coupé</option><option value="Targa">Targa</option></select></label></div>
 <div class="filter-row"><label>Preis<span id="price-min-input"><input id="price-min" type="number" placeholder="von" min="0" step="1000"></span><span>&ndash;</span><span><input id="price-max" type="number" placeholder="bis" min="0" step="1000"></span>€</label><label>km<span><input id="km-min" type="number" placeholder="von" min="0" step="1000"></span><span>&ndash;</span><span><input id="km-max" type="number" placeholder="bis" min="0" step="1000"></span>km</label><label>Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="status-online">Online zuerst</option><option value="status-offline">Offline zuerst</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option><option value="mileage-desc">km hoch</option><option value="ez-asc">EZ alt&rarr;neu</option><option value="ez-desc">EZ neu&rarr;alt</option><option value="source">Quelle</option></select></label><label>EZ von<input id="ez-from" type="text" placeholder="z.B. 2008" maxlength="4"></label><label>bis<input id="ez-to" type="text" placeholder="z.B. 2013" maxlength="4"></label><label>Änderung<select id="change-filter"><option value="all">Alle</option><option value="new">Neu</option><option value="price_change">Preis geändert</option><option value="metadata_change">Metadaten geändert</option><option value="unchanged">Unverändert</option></select></label><label>Score &ge;<input id="score-min" class="score-slider" type="range" min="0" max="100" value="0"><span id="score-value">0</span></label><label class="toggle-label"><input id="hide-risk" type="checkbox">Riskante ausblenden</label></div>
 <p class="visible-count" id="visible-count">Alle Angebote</p></section><div id="listings" class="grid"></div></main>
 <script data-field-registry="{field_registry_attr}">
@@ -389,14 +387,6 @@ function parseEditorValue(raw, kind) {{
   if (kind === 'list') return raw.split(',').map(value => value.trim()).filter(Boolean);
   if (kind === 'json') return JSON.parse(raw);
   return raw;
-}}
-async function loadScoring() {{
-  const response = await fetch('/api/scoring');
-  const payload = await response.json();
-  const scoring = payload.scoring || {{}};
-  const weights = scoring.weights || {{}};
-  document.querySelectorAll('[data-score-weight]').forEach(input => input.value = weights[input.dataset.scoreWeight] ?? 0);
-  document.querySelector('#scoring-form [name="preferred_trims"]').value = (scoring.preferred_trims || []).join(', ');
 }}
 async function loadStatus() {{
   const response = await fetch('/api/status');
@@ -631,18 +621,6 @@ async function reScrapeOffer(id) {{
   }}
   await loadListings();
 }}
-document.getElementById('scoring-form').addEventListener('submit', async event => {{
-  event.preventDefault();
-  const form = event.target;
-  const weights = {{}};
-  form.querySelectorAll('[data-score-weight]').forEach(input => weights[input.dataset.scoreWeight] = Number(input.value || 0));
-  const preferredTrims = form.preferred_trims.value.split(',').map(value => value.trim()).filter(Boolean);
-  const response = await fetch('/api/scoring', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{weights, preferred_trims: preferredTrims}})}});
-  if (!response.ok) {{ document.getElementById('status').textContent = 'Scoring speichern fehlgeschlagen: ' + (await response.text()); return; }}
-  document.getElementById('status').textContent = 'Scoring gespeichert';
-  await loadScoring();
-  await loadListings();
-}});
 document.getElementById('listing-sort').addEventListener('change', renderListings);
 document.getElementById('status-filter').addEventListener('change', renderListings);
 document.getElementById('text-search').addEventListener('input', renderListings);
@@ -672,7 +650,6 @@ document.getElementById('run').addEventListener('click', async () => {{
   updateLastCrawl(payload.last_crawl_at);
   await loadListings();
 }});
-loadScoring();
 loadStatus();
 loadListings();
 </script>

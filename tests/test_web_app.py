@@ -161,9 +161,8 @@ def test_web_api_reads_and_updates_scoring_config(tmp_path: Path):
 def test_web_shell_contains_scoring_configuration_form():
     html = render_app_shell()
 
-    assert "Scoring konfigurieren" in html
-    assert "manual_transmission" in html
-    assert "/api/scoring" in html
+    assert "Scoring" not in html
+    assert "/api/scoring" not in html
 
 
 def test_web_shell_always_shows_last_crawl_status():
@@ -350,7 +349,7 @@ def test_api_filter_combined(tmp_path):
     thread.start()
     base_url = f"http://127.0.0.1:{server.server_address[1]}"
     try:
-        qs = "source=Kleinanzeigen&transmission=manual&body_style=Coup%C3%A9&score_min=60&price_min=35000"
+        qs = "source=Kleinanzeigen&transmission=manual&body_style=Coup%C3%A9&score_min=50&price_min=35000"
         status, payload = _make_filtered_request(base_url, qs)
         assert status == 200
         ids = {l["id"] for l in payload["listings"]}

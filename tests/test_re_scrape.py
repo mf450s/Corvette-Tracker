@@ -187,6 +187,10 @@ def test_autoscout24_with_existing_listing(mock_fetch_html, store: TrackerStore)
     assert updated is not None
     assert len(updated.image_urls) == 3
     assert all("1920x1080.webp" in url for url in updated.image_urls)
+    # Fresh detail text replaces the old description (drops stale title prices)
+    assert updated.description_text is not None
+    assert "EXP € 109.480" not in (updated.description_text or "")
+    assert updated.url == "https://www.autoscout24.de/angebote/corvette-zr1-benzin-gelb-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
 
 
 @patch("corvette_tracker.re_scrape.fetch_html")

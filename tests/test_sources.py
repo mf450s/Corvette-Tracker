@@ -147,6 +147,25 @@ def test_parse_autoscout24_detail_next_data_uses_listing_details_fields():
     assert listing.image_urls == ["https://prod.pictures.autoscout24.net/listing-images/e7fbd6c4.jpg/1920x1080.webp"]
 
 
+def test_parse_autoscout24_detail_uses_webpage_when_url_missing():
+    """Detail pages sometimes omit ``url`` — the canonical URL lives in
+    ``webPage``.  Without the fallback the parser keeps the stale base URL."""
+    html = '''
+    <html><body><script id="__NEXT_DATA__" type="application/json">
+    {"props":{"pageProps":{"listingDetails":{"id":"e65b455d-a2cc-4bb9-adbd-77189c0a0dc4","webPage":"https://www.autoscout24.de/angebote/corvette-zr1-benzin-gelb-cat_ma16380gr202936-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4","price":{"priceRaw":119980,"priceFormatted":"€ 119.980"},"images":[],"location":{"zip":"8301","city":"Kainbach bei Graz"},"vehicle":{"make":"Chevrolet","model":"Corvette","modelVersionInput":"ZR1","mileageInKmRaw":39801,"firstRegistrationDate":"2010-06-01"}}}}}
+    </script></body></html>
+    '''
+    stale_base = "https://www.autoscout24.de/angebote/corvette-zr1-exp-e-109-480-benzin-gelb-cat_ma16380mo19143-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
+
+    listings = parse_autoscout24_search(html, stale_base)
+
+    assert len(listings) == 1
+    assert listings[0].url == (
+        "https://www.autoscout24.de/angebote/corvette-zr1-benzin-gelb-cat_ma16380gr202936-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
+    )
+    assert listings[0].price_eur == 119980
+
+
 def test_normalize_autoscout24_image_url_prefers_large_webp_variant():
     url = "https://prod.pictures.autoscout24.net/listing-images/abc.jpg/250x188.webp"
 

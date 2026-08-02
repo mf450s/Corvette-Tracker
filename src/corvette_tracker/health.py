@@ -8,7 +8,7 @@ import urllib.request
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from .storage import TrackerStore
 
@@ -27,7 +27,8 @@ DOMAIN_DELAY_SECONDS = 1.0
 NOT_FOUND_PATTERNS: list[re.Pattern] = [
     re.compile(r"anzeige\s+(?:wurde\s+)?(?:leider\s+)?nicht\s+gefunden", re.I),
     re.compile(r"die\s+gesuchte\s+anzeige\s+ist\s+nicht\s+mehr\s+vorhanden", re.I),
-    re.compile(r"seite\s+nicht\s+gefunden", re.I),
+    re.compile(r"<title>[^<]*nicht\s+gefunden[^<]*</title>", re.I | re.S),
+    re.compile(r"<h1[^>]*>[^<]*nicht\s+gefunden[^<]*</h1>", re.I | re.S),
     re.compile(r"dieses\s+(?:angebot|inserat|objekt)\s+(?:ist\s+)?nicht\s+mehr\s+(?:vorhanden|verfügbar|verfuegbar)", re.I),
     re.compile(r"listing\s+(?:is\s+)?(?:no\s+longer\s+)?not\s+found", re.I),
     re.compile(r"offer\s+(?:is\s+)?(?:no\s+longer\s+)?(?:available|found)", re.I),
@@ -35,7 +36,16 @@ NOT_FOUND_PATTERNS: list[re.Pattern] = [
     re.compile(r"404\s+not\s+found", re.I),
     re.compile(r"dieses\s+objekt\s+wurde\s+entfernt", re.I),
     re.compile(r"this\s+(?:ad|listing)\s+(?:has\s+been\s+)?removed", re.I),
+    re.compile(r"gelöscht", re.I),
+    re.compile(r"showDeletedVeil\s*:\s*true", re.I),
+    re.compile(r"showPausedVeil\s*:\s*true", re.I),
 ]
+
+# Realistic browser User-Agent to avoid bot blocking/redirects
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -82,25 +92,71 @@ def _domain_delay(url: str) -> None:
     _last_request_at[domain] = time.time()
 
 
-def _check_single_url(url: str) -> tuple[int | None, str | None]:
+# Maximum redirect hops followed for canonical (same-listing) redirects
+MAX_REDIRECT_DEPTH = 3
+
+
+def _url_identity_token(url: str) -> str | None:
+    """Extract a stable listing-identity token from a marketplace URL.
+
+    Marketplaces rewrite offer URLs (slug or taxonomy changes) while keeping
+    a stable identifier.  Reusing that identifier lets us tell a *canonical
+    redirect* (same offer, still online — e.g. AutoScout24 rewrote
+    ``mo19143`` → ``gr202936`` in the path) apart from a *deleted listing*
+    redirect (e.g. Kleinanzeigen sends the homepage without any id).
+
+    Supported shapes:
+      - AutoScout24 detail GUID: ...-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4
+      - Kleinanzeigen numeric ad id: /s-anzeige/<slug>/12345-216-1406
+      - mobile.de query id: details.html?id=12345
+    """
+    match = re.search(
+        r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+        url,
+        re.I,
+    )
+    if match:
+        return match.group(0).lower()
+    match = re.search(r"/(\d+)-216-", urlparse(url).path)
+    if match:
+        return match.group(1)
+    match = re.search(r"[?&]id=(\d+)", url)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _same_listing_identity(url_a: str, url_b: str) -> bool:
+    """True when both URLs reference the same marketplace offer."""
+    token_a = _url_identity_token(url_a)
+    token_b = _url_identity_token(url_b)
+    return bool(token_a and token_b and token_a == token_b)
+
+
+def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, str | None, str | None]:
     """Check whether a single URL is reachable and still points to a listing.
 
     Tries HEAD first, falls back to GET if the server rejects HEAD.
-    Does NOT follow redirects — a redirect (3xx) means the listing is gone.
-    Also checks response body for common 'not found' indicators.
+    Does NOT follow redirects to a different listing — a 3xx that drops the
+    listing identity means the offer is gone.  A redirect that *preserves*
+    the listing identity (canonical URL rewrite) is followed and verified;
+    the canonical URL is then returned so callers can adopt it.
 
-    Returns (http_status, error_message).
-    - (200, None) on success (listing is online)
-    - (status_code, None) on non-2xx, including redirects (listing offline)
-    - (None, \"error message\") on connection failure / timeout
+    Returns (http_status, error_message, final_url).
+    - (200, None, url) on success (listing is online)
+    - (status_code, None, url) on non-2xx, including cross-listing redirects
+    - (None, "error message", url) on connection failure / timeout
     """
     if not url:
-        return None, "empty URL"
+        return None, "empty URL", None
+    if _depth >= MAX_REDIRECT_DEPTH:
+        return None, "redirect loop", url
 
     _domain_delay(url)
 
     def _do_request(method: str):
         req = urllib.request.Request(url, method=method)
+        req.add_header("User-Agent", BROWSER_USER_AGENT)
         opener = urllib.request.build_opener(_NoRedirectHandler())
         return opener.open(req, timeout=CHECK_TIMEOUT)
 
@@ -109,17 +165,32 @@ def _check_single_url(url: str) -> tuple[int | None, str | None]:
             with _do_request(method) as response:
                 status = response.status
 
-                # Redirect (3xx) — listing URL no longer points to the listing
+                # Redirect (3xx) — either a canonical rewrite or a gone listing
                 if 300 <= status < 400:
+                    location = response.headers.get("Location")
+                    if location:
+                        target = urljoin(url, location)
+                        if _same_listing_identity(url, target):
+                            log.info(
+                                "Listing %s -> canonical %s (HTTP %s) — following",
+                                url, target, status,
+                            )
+                            sub_status, sub_error, sub_final = _check_single_url_full(
+                                target, _depth=_depth + 1,
+                            )
+                            if sub_status is not None and 200 <= sub_status < 300:
+                                return sub_status, sub_error, sub_final or target
+                            # Canonical target itself is gone
+                            return sub_status, sub_error, target
                     log.info(
                         "Listing %s returned HTTP %s (redirect) — marking offline",
                         url, status,
                     )
-                    return status, None
+                    return status, None, None
 
                 # Non-2xx status — offline
                 if status < 200 or status >= 300:
-                    return status, None
+                    return status, None, None
 
                 # 2xx from HEAD: URL is reachable, but we need GET to
                 # check the body for 'not found' content. Fall through.
@@ -127,7 +198,7 @@ def _check_single_url(url: str) -> tuple[int | None, str | None]:
                     continue
 
                 # 2xx from GET: check response body for 'not found' indicators
-                raw_body = response.read(65536)  # 64KB max
+                raw_body = response.read(262144)  # 256KB max
                 try:
                     charset = response.headers.get_content_charset() or "utf-8"
                     body = raw_body.decode(charset, errors="replace")
@@ -139,32 +210,72 @@ def _check_single_url(url: str) -> tuple[int | None, str | None]:
                         "Listing %s returned HTTP 200 but body indicates 'not found' — marking offline",
                         url,
                     )
-                    return 410, "not found body"  # 410 Gone semantics
-                if len(raw_body) >= 65536:
+                    return 410, "not found body", None  # 410 Gone semantics
+                if len(raw_body) >= 262144:
                     log.debug(
-                        "Body truncated for %s (>64KB), content check limited",
+                        "Body truncated for %s (>256KB), content check limited",
                         url,
                     )
 
-                return status, None
+                return status, None, url
 
         except urllib.error.HTTPError as exc:
+            # Redirects surface as HTTPError because the no-redirect handler
+            # refuses to follow them. A canonical rewrite that keeps the
+            # listing identity is followed; anything else is offline.
+            if 300 <= exc.code < 400:
+                location = exc.headers.get("Location")
+                if location:
+                    target = urljoin(url, location)
+                    if _same_listing_identity(url, target):
+                        log.info(
+                            "Listing %s -> canonical %s (HTTP %s) — following",
+                            url, target, exc.code,
+                        )
+                        sub_status, sub_error, sub_final = _check_single_url_full(
+                            target, _depth=_depth + 1,
+                        )
+                        if sub_status is not None and 200 <= sub_status < 300:
+                            return sub_status, sub_error, sub_final or target
+                        # Canonical target itself is gone
+                        return sub_status, sub_error, target
+                log.info(
+                    "Listing %s returned HTTP %s (redirect) — marking offline",
+                    url, exc.code,
+                )
+                return exc.code, None, None
             # HEAD method rejected (405) -> try GET
             if exc.code == 405 and method == "HEAD":
                 continue
             # Other HTTP errors: report the status code
             log.debug("HTTP %s for %s (%s)", exc.code, url, method)
-            return exc.code, None
+            return exc.code, None, None
         except urllib.error.URLError:
             if method == "HEAD":
                 continue
-            return None, "connection failed"
+            return None, "connection failed", None
         except TimeoutError:
-            return None, "timeout"
+            return None, "timeout", None
         except OSError as exc:
-            return None, str(exc)
+            return None, str(exc), None
 
-    return None, "all methods failed"
+    return None, "all methods failed", None
+
+
+def _check_single_url(url: str) -> tuple[int | None, str | None]:
+    """Check whether a single URL is reachable and still points to a listing.
+
+    Tries HEAD first, falls back to GET if the server rejects HEAD.
+    Does NOT follow redirects — a redirect (3xx) means the listing is gone,
+    unless it is a canonical rewrite that keeps the same listing identity.
+
+    Returns (http_status, error_message).
+    - (200, None) on success (listing is online)
+    - (status_code, None) on non-2xx, including redirects (listing offline)
+    - (None, "error message") on connection failure / timeout
+    """
+    status, error, _final = _check_single_url_full(url)
+    return status, error
 
 
 def check_stale_offers(
@@ -215,8 +326,16 @@ def check_stale_offers(
                 pass  # parse failure = re-check
 
         # Perform health check
-        http_status, error = _check_single_url(listing.url)
+        http_status, error, final_url = _check_single_url_full(listing.url)
         is_online = http_status is not None and 200 <= http_status < 300
+
+        if is_online and final_url and final_url != listing.url:
+            # Marketplaces rewrite offer URLs (e.g. AutoScout24 taxonomy
+            # migrations).  Adopt the canonical URL so future checks and
+            # re-scrapes hit the right page directly.
+            if not dry_run:
+                store.update_listing_url(listing.id, final_url)
+            listing.url = final_url
 
         if not dry_run:
             store.update_online_status(

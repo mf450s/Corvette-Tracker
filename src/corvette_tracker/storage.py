@@ -173,7 +173,32 @@ LISTING_FIELDS = {field.name for field in fields(Listing)}
 PROTECTED_OVERRIDE_FIELDS = {"id", "source", "source_listing_id", "url", "change_type", "previous_price_eur", "cluster_id"}
 EDITABLE_FIELDS = LISTING_FIELDS - PROTECTED_OVERRIDE_FIELDS
 
+# Columns added to SCHEMA after the table first shipped. CREATE TABLE IF NOT
+# EXISTS only creates missing tables — it never adds columns to existing ones,
+# so databases created earlier must be migrated here or upserts break with
+# "no such column".
+REQUIRED_COLUMNS: dict[str, dict[str, str]] = {
+    "listings": {
+        "hidden": "INTEGER NOT NULL DEFAULT 0",
+    },
+}
+
 log = logging.getLogger(__name__)
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Add columns that are missing from pre-existing tables."""
+    for table, columns in REQUIRED_COLUMNS.items():
+        existing = {
+            row[1] for row in conn.execute(f"PRAGMA table_info({table})")
+        }
+        for column, definition in columns.items():
+            if column not in existing:
+                log.info("Migrating %s: adding column %s", table, column)
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                )
+    conn.commit()
 
 
 class TrackerStore:
@@ -183,6 +208,7 @@ class TrackerStore:
         self.conn = sqlite3.connect(self.path, check_same_thread=False, timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        _migrate_schema(self.conn)
         self.conn.commit()
 
     def _overrides_for(self, listing_id: str) -> dict[str, Any]:
@@ -264,11 +290,34 @@ class TrackerStore:
         row = self.conn.execute("SELECT payload_json FROM listings WHERE id = ?", (listing_id,)).fetchone()
         if row is None:
             return None
-        return Listing(**json.loads(row["payload_json"]))
+        return self._deserialize_listing(row["payload_json"])
+
+    @staticmethod
+    def _deserialize_listing(payload: str) -> Listing:
+        """Deserialize a listing from JSON, normalizing None list/dict fields."""
+        data = json.loads(payload)
+        # Ensure list/dict fields that were stored as null become empty defaults
+        if data.get("risk_flags") is None:
+            data["risk_flags"] = []
+        if data.get("equipment") is None:
+            data["equipment"] = []
+        if data.get("image_urls") is None:
+            data["image_urls"] = []
+        if data.get("visual_flags") is None:
+            data["visual_flags"] = []
+        if data.get("inference_notes") is None:
+            data["inference_notes"] = []
+        if data.get("conflict_flags") is None:
+            data["conflict_flags"] = []
+        if data.get("validation_flags") is None:
+            data["validation_flags"] = []
+        if data.get("ai_enrichment") is None:
+            data["ai_enrichment"] = {}
+        return Listing(**data)
 
     def list_active(self) -> list[Listing]:
         rows = self.conn.execute("SELECT payload_json FROM listings ORDER BY COALESCE(price_eur, 999999999), id").fetchall()
-        return [Listing(**json.loads(row["payload_json"])) for row in rows]
+        return [self._deserialize_listing(row["payload_json"]) for row in rows]
 
     def listing_history(self, listing_id: str, limit: int = 50) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -400,6 +449,28 @@ class TrackerStore:
             (listing_id,),
         ).fetchone()
         return dict(row) if row else None
+
+    def update_listing_url(self, listing_id: str, new_url: str) -> bool:
+        """Adopt a new canonical URL for an existing listing.
+
+        The URL lives inside ``payload_json`` (there is no dedicated column),
+        so only the payload row is rewritten.  The listing id — derived from
+        the stable source identifier — stays unchanged.
+
+        Returns True when a change was applied, False when the listing is
+        missing or the URL already matches.
+        """
+        listing = self.get_listing(listing_id)
+        if listing is None or listing.url == new_url:
+            return False
+        listing.url = new_url
+        payload = json.dumps(listing.to_dict(), ensure_ascii=False, sort_keys=True)
+        self.conn.execute(
+            "UPDATE listings SET payload_json = ? WHERE id = ?",
+            (payload, listing_id),
+        )
+        self.conn.commit()
+        return True
 
     def list_online_statuses(
         self,
