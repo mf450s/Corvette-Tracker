@@ -115,6 +115,97 @@ def test_update_online_status_creates_and_returns_row(tmp_path: Path):
     assert row["last_checked_at"] is not None
 
 
+def test_online_status_history_records_transitions_only(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+
+    # First check ever -> one history row
+    store.update_online_status("autoscout24_123", is_online=True, http_status=200)
+    # Same status -> no new row
+    store.update_online_status("autoscout24_123", is_online=True, http_status=200)
+    # Transition -> new row
+    store.update_online_status("autoscout24_123", is_online=False, http_status=404, error_message="Gone")
+    # Same status -> no new row
+    store.update_online_status("autoscout24_123", is_online=False, http_status=410)
+
+    history = store.online_status_history("autoscout24_123")
+    assert len(history) == 2
+    assert history[0]["is_online"] == 1
+    assert history[0]["http_status"] == 200
+    assert history[1]["is_online"] == 0
+    assert history[1]["http_status"] == 404
+    # chronological ascending
+    assert history[0]["captured_at"] <= history[1]["captured_at"]
+
+
+def test_listing_history_collapses_unchanged_runs(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+
+    # Re-upsert identical data 3 times -> 3 "unchanged" snapshots
+    store.upsert_listings([make_listing()])
+    store.upsert_listings([make_listing()])
+    store.upsert_listings([make_listing()])
+
+    # Rewrite captured_at so the ordering is deterministic
+    rows = store.conn.execute(
+        "SELECT id FROM snapshots WHERE listing_id = ? ORDER BY id", ("autoscout24_123",)
+    ).fetchall()
+    for i, row in enumerate(rows):
+        store.conn.execute(
+            "UPDATE snapshots SET captured_at = ? WHERE id = ?",
+            (f"2026-07-{10 + i:02d} 12:00:00", row["id"]),
+        )
+    store.conn.commit()
+
+    data = store.listing_history("autoscout24_123")
+    # 1 "new" + 1 collapsed "unchanged" run (3 snapshots)
+    assert [e["change_type"] for e in data["history"]] == ["new", "unchanged"]
+    collapsed = data["history"][1]
+    assert collapsed["is_collapsed"] is True
+    assert collapsed["count"] == 3
+    assert collapsed["captured_at"] == "2026-07-11 12:00:00"
+    assert collapsed["until_at"] == "2026-07-13 12:00:00"
+    # No priced snapshots -> no series
+    assert data["series"] == []
+    assert data["summary"]["snapshot_count"] == 4
+    assert data["summary"]["first_seen_at"] == "2026-07-10 12:00:00"
+    assert data["summary"]["last_seen_at"] == "2026-07-13 12:00:00"
+
+
+def test_listing_history_price_series_and_summary(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing(price=54900)])
+    store.upsert_listings([make_listing(price=52900)])
+    store.upsert_listings([make_listing(price=53900)])
+    store.upsert_listings([make_listing(price=53900)])  # no change
+
+    rows = store.conn.execute(
+        "SELECT id FROM snapshots WHERE listing_id = ? ORDER BY id", ("autoscout24_123",)
+    ).fetchall()
+    for i, row in enumerate(rows):
+        store.conn.execute(
+            "UPDATE snapshots SET captured_at = ? WHERE id = ?",
+            (f"2026-07-{10 + i:02d} 12:00:00", row["id"]),
+        )
+    store.conn.commit()
+
+    data = store.listing_history("autoscout24_123")
+    history_types = [e["change_type"] for e in data["history"]]
+    assert history_types == ["new", "price_change", "price_change", "unchanged"]
+    assert data["summary"]["price_changes"] == 2
+    assert data["summary"]["first_price_eur"] == 54900
+    assert data["summary"]["current_price_eur"] == 53900
+    assert data["summary"]["price_min_eur"] == 52900
+    assert data["summary"]["price_max_eur"] == 54900
+    # Series: 3 distinct price levels (54900, 52900, 53900), ascending
+    assert data["series"] == [
+        {"captured_at": "2026-07-10 12:00:00", "price_eur": 54900},
+        {"captured_at": "2026-07-11 12:00:00", "price_eur": 52900},
+        {"captured_at": "2026-07-12 12:00:00", "price_eur": 53900},
+    ]
+
+
 def test_update_online_status_upserts_instead_of_duplicating(tmp_path: Path):
     store = TrackerStore(tmp_path / "tracker.sqlite")
     store.upsert_listings([make_listing()])
