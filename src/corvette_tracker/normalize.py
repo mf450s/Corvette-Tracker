@@ -4,6 +4,7 @@ import hashlib
 import re
 from urllib.parse import urlsplit, urlunsplit
 
+from .enums import TrimType
 from .models import Listing
 from .scoring import apply_score
 from .validation import apply_validation_flags
@@ -149,21 +150,21 @@ def estimate_power_from_engine(engine: str | None) -> int | None:
     return {"LS2": 404, "LS3": 437, "LS7": 512, "LS9": 647}.get(engine)
 
 
-def _extract_specific_trim(text: str) -> str | None:
+def _extract_specific_trim(text: str) -> TrimType | None:
     upper = (text or "").upper()
     if "ZR1" in upper or "ZR 1" in upper:
-        return "ZR1"
+        return TrimType.ZR1
     if "Z06" in upper or "Z 06" in upper or "ZO6" in upper:
-        return "Z06"
+        return TrimType.Z06
     if "GRAND SPORT" in upper or "GRAND-SPORT" in upper:
-        return "Grand Sport"
+        return TrimType.GRAND_SPORT
     if "427" in upper or "CENTENNIAL" in upper:
-        return "Special Edition"
+        return TrimType.SPECIAL_EDITION
     return None
 
 
-def extract_trim(text: str) -> str | None:
-    return _extract_specific_trim(text) or ("Base" if "CORVETTE" in (text or "").upper() else None)
+def extract_trim(text: str) -> TrimType | None:
+    return _extract_specific_trim(text) or (TrimType.BASE if "CORVETTE" in (text or "").upper() else None)
 
 
 def extract_transmission(text: str) -> str | None:
@@ -262,29 +263,29 @@ def _append_unique(items: list[str], value: str) -> None:
 def apply_c6_inferences(
     *,
     engine: str | None,
-    trim: str | None,
+    trim: TrimType | None,
     transmission: str | None,
     body_style: str | None,
-) -> tuple[str | None, str | None, str | None, list[str], list[str]]:
+) -> tuple[TrimType | None, str | None, str | None, list[str], list[str]]:
     inference_notes: list[str] = []
     conflict_flags: list[str] = []
 
     inferred_trim = trim
     if engine == "LS7":
-        if inferred_trim and inferred_trim != "Z06":
+        if inferred_trim and inferred_trim != TrimType.Z06:
             _append_unique(conflict_flags, f"conflict_ls7_trim_{inferred_trim.lower().replace(' ', '_')}")
-        if inferred_trim != "Z06":
+        if inferred_trim != TrimType.Z06:
             _append_unique(inference_notes, "LS7 → Z06")
-        inferred_trim = "Z06"
+        inferred_trim = TrimType.Z06
     elif engine == "LS9":
-        if inferred_trim and inferred_trim != "ZR1":
+        if inferred_trim and inferred_trim != TrimType.ZR1:
             _append_unique(conflict_flags, f"conflict_ls9_trim_{inferred_trim.lower().replace(' ', '_')}")
-        if inferred_trim != "ZR1":
+        if inferred_trim != TrimType.ZR1:
             _append_unique(inference_notes, "LS9 → ZR1")
-        inferred_trim = "ZR1"
+        inferred_trim = TrimType.ZR1
 
     inferred_transmission = transmission
-    if inferred_trim in {"Z06", "ZR1"}:
+    if inferred_trim in {TrimType.Z06, TrimType.ZR1}:
         if inferred_transmission and inferred_transmission != "manual":
             _append_unique(conflict_flags, f"conflict_{inferred_trim.lower()}_transmission_{inferred_transmission}")
         if inferred_transmission != "manual":
@@ -292,7 +293,7 @@ def apply_c6_inferences(
         inferred_transmission = "manual"
 
     inferred_body_style = body_style
-    if inferred_trim in {"Z06", "ZR1"}:
+    if inferred_trim in {TrimType.Z06, TrimType.ZR1}:
         if inferred_body_style and inferred_body_style != "Coupé":
             _append_unique(conflict_flags, f"conflict_{inferred_trim.lower()}_body_{inferred_body_style.lower()}")
         if inferred_body_style != "Coupé":
@@ -351,9 +352,9 @@ def normalize_listing(
     title_upper = title.upper()
     trim = (
         _extract_specific_trim(title)
-        or ("Base" if "CORVETTE" in title_upper or "C6" in title_upper else None)
+        or (TrimType.BASE if "CORVETTE" in title_upper or "C6" in title_upper else None)
         or _extract_specific_trim(combined)
-        or ("Base" if "CORVETTE" in combined.upper() else None)
+        or (TrimType.BASE if "CORVETTE" in combined.upper() else None)
     )
     transmission = extract_transmission(combined)
     body_style = extract_body_style(title) or extract_body_style(combined)
@@ -374,7 +375,7 @@ def normalize_listing(
         url=c_url,
         title=" ".join(title.split()),
         generation="C6",
-        model=f"Chevrolet Corvette C6 {body_style}" if trim == "Base" and body_style else f"Chevrolet Corvette C6 {trim}" if trim else "Chevrolet Corvette C6",
+        model=f"Chevrolet Corvette C6 {body_style}" if trim == TrimType.BASE and body_style else f"Chevrolet Corvette C6 {trim}" if trim else "Chevrolet Corvette C6",
         price_eur=price,
         price_label=price_label,
         mileage_km=mileage,

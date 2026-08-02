@@ -20,6 +20,16 @@ class EngineType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class TrimType(StrEnum):
+    """Trim levels for the C6 Corvette."""
+
+    BASE = "Base"
+    GRAND_SPORT = "Grand Sport"
+    Z06 = "Z06"
+    ZR1 = "ZR1"
+    SPECIAL_EDITION = "Special Edition"
+
+
 class SourceType(StrEnum):
     """Supported marketplace source identifiers."""
 

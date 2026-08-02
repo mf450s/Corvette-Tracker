@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from .enums import TrimType
+
 
 @dataclass(slots=True)
 class Listing:
@@ -23,7 +25,7 @@ class Listing:
     power_hp: int | None = None
     estimated_power_hp: int | None = None
     power_note: str | None = None
-    trim: str | None = None
+    trim: TrimType | None = None
     first_registration: str | None = None
     tuv_until: str | None = None
     transmission: str | None = None
