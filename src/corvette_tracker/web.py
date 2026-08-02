@@ -182,7 +182,10 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             if self.tracker_app.store.get_listing(listing_id) is None:
                 self._send_json({"error": "listing not found"}, HTTPStatus.NOT_FOUND)
                 return
-            self._send_json({"listing_id": listing_id, "history": self.tracker_app.store.listing_history(listing_id)})
+            data = self.tracker_app.store.listing_history(listing_id)
+            data["online_history"] = self.tracker_app.store.online_status_history(listing_id)
+            data["listing_id"] = listing_id
+            self._send_json(data)
             return
         if path == "/api/scoring":
             self._send_json({"scoring": self.tracker_app.scoring_config()})
@@ -343,6 +346,28 @@ def render_app_shell() -> str:
     .toggle-label {{ display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; }}
     .toggle-label input[type=checkbox] {{ width:18px; height:18px; accent-color:var(--accent); }}
     .visible-count {{ font-weight:700; font-size:15px; margin-top:10px; color:var(--text); }}
+    .history-table {{ width:100%; border-collapse:collapse; margin-top:12px; }}
+    .history-table th,.history-table td {{ text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top; }}
+    .history-table th {{ color:var(--muted); font-weight:600; font-size:12px; }}
+    .history-table td.muted {{ color:var(--muted); }}
+    .change-badge {{ display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; }}
+    .change-badge.new {{ background:rgba(34,197,94,.16); color:#4ade80; }}
+    .change-badge.price_change {{ background:rgba(239,68,68,.16); color:#f87171; }}
+    .change-badge.metadata_change {{ background:rgba(245,158,11,.16); color:#fbbf24; }}
+    .change-badge.manual_override {{ background:rgba(139,92,246,.16); color:#c4b5fd; }}
+    .change-badge.unchanged {{ background:rgba(161,161,170,.14); color:var(--muted); }}
+    .change-badge.went_offline {{ background:rgba(239,68,68,.22); color:#f87171; }}
+    .change-badge.came_online {{ background:rgba(34,197,94,.22); color:#4ade80; }}
+    .delta-up {{ color:#4ade80; font-weight:700; }}
+    .delta-down {{ color:#f87171; font-weight:700; }}
+    .collapsed-hint {{ color:var(--muted); font-size:11px; font-weight:400; margin-left:4px; }}
+    .history-summary {{ display:flex; gap:22px; flex-wrap:wrap; margin:14px 0 4px; }}
+    .history-summary .stat {{ display:grid; gap:2px; }}
+    .history-summary .stat dt {{ color:var(--muted); font-size:11px; }}
+    .history-summary .stat dd {{ margin:0; font-weight:800; font-size:15px; }}
+    .price-chart {{ width:100%; height:170px; margin:14px 0 6px; background:rgba(0,0,0,.18); border:1px solid var(--line); border-radius:12px; padding:10px; }}
+    .price-chart svg {{ width:100%; height:100%; }}
+    .online-event td {{ background:rgba(0,0,0,.14); }}
   </style>
 </head>
 <body>
@@ -483,9 +508,90 @@ function inlineEditorValue(field, item) {{
 function renderAllFields(item) {{
   return `<details class="listing-fields" open><summary>Alle Werte anzeigen / inline bearbeiten</summary><div class="field-grid">${{fieldRegistry.map(field => inlineEditorValue(field, item)).join('')}}</div><div class="button-row" style="margin-top:16px"><button class="button" onclick="saveAllFields('${{esc(item.id)}}')">Speichern</button></div></details>`;
 }}
-function renderHistory(history) {{
-  const rows = (history || []).map(row => `<tr><td>${{esc(row.captured_at)}}</td><td>${{esc(row.change_type)}}</td><td>${{fmtEur(row.price_eur)}}</td><td>${{fmtKm(row.mileage_km)}}</td></tr>`).join('');
-  return `<section class="panel"><h2>Verlauf</h2><table class="history-table"><thead><tr><th>Zeit</th><th>Änderung</th><th>Preis</th><th>km</th></tr></thead><tbody>${{rows || '<tr><td colspan="4">Noch kein Verlauf.</td></tr>'}}</tbody></table></section>`;
+function changeLabel(type) {{
+  const labels = {{'new':'Neu','price_change':'Preis geändert','metadata_change':'Metadaten geändert','manual_override':'Manuell','unchanged':'Unverändert','went_offline':'Offline gegangen','came_online':'Wieder online'}};
+  return labels[type] || type;
+}}
+function fmtDelta(value) {{
+  if (value == null) return 'k.A.';
+  const sign = value > 0 ? '+' : '';
+  return sign + Number(value).toLocaleString('de-DE');
+}}
+function renderHistorySummary(summary) {{
+  if (!summary) return '';
+  const first = summary.first_price_eur;
+  const current = summary.current_price_eur;
+  let deltaHtml = '';
+  if (first != null && current != null && first !== 0) {{
+    const pct = ((current - first) / first) * 100;
+    const cls = pct <= 0 ? 'delta-up' : 'delta-down';
+    const sign = pct > 0 ? '+' : '';
+    deltaHtml = `<div class="stat"><dt>seit Erstpreis</dt><dd class="${{cls}}">${{sign}}${{pct.toFixed(1)}}%</dd></div>`;
+  }}
+  return `<div class="history-summary">
+    <div class="stat"><dt>Beobachtet seit</dt><dd>${{fmtDateTime(summary.first_seen_at)}}</dd></div>
+    <div class="stat"><dt>Preisänderungen</dt><dd>${{summary.price_changes ?? 0}}</dd></div>
+    <div class="stat"><dt>Preis min</dt><dd>${{fmtEur(summary.price_min_eur)}}</dd></div>
+    <div class="stat"><dt>Preis max</dt><dd>${{fmtEur(summary.price_max_eur)}}</dd></div>
+    <div class="stat"><dt>aktuell</dt><dd>${{fmtEur(summary.current_price_eur)}}</dd>
+    ${{deltaHtml}}
+  </div>`;
+}}
+function renderPriceChart(series) {{
+  if (!series || series.length < 2) return '';
+  const prices = series.map(p => p.price_eur).filter(v => v != null);
+  if (prices.length < 2) return '';
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const span = (max - min) || 1;
+  const W = 600, H = 150, PAD = 6;
+  const pts = series.filter(p => p.price_eur != null).map((p, i, arr) => {{
+    const x = PAD + (i / (arr.length - 1)) * (W - 2 * PAD);
+    const y = H - PAD - ((p.price_eur - min) / span) * (H - 2 * PAD);
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }}).join(' ');
+  return `<div class="price-chart"><svg viewBox="0 0 ${{W}} ${{H}}" preserveAspectRatio="none" role="img" aria-label="Preisverlauf">
+    <polyline fill="none" stroke="#f87171" stroke-width="2" points="${{pts}}"/>
+    <text x="${{W - 4}}" y="${{PAD + 10}}" text-anchor="end" fill="#a1a1aa" font-size="11">${{fmtEur(max)}}</text>
+    <text x="${{W - 4}}" y="${{H - PAD - 4}}" text-anchor="end" fill="#a1a1aa" font-size="11">${{fmtEur(min)}}</text>
+  </svg></div>`;
+}}
+function renderHistory(history, onlineHistory, summary, series) {{
+  const events = [];
+  (history || []).forEach(e => events.push({{
+    captured_at: e.captured_at, until_at: e.until_at, change_type: e.change_type,
+    price_eur: e.price_eur, mileage_km: e.mileage_km,
+    is_collapsed: e.is_collapsed, count: e.count
+  }}));
+  (onlineHistory || []).forEach(e => events.push({{
+    captured_at: e.captured_at, change_type: e.is_online ? 'came_online' : 'went_offline',
+    price_eur: null, mileage_km: null, is_collapsed: false
+  }}));
+  events.sort((a, b) => String(a.captured_at).localeCompare(String(b.captured_at)));
+  const reversed = [...events].reverse();
+  const rows = reversed.map((row, idx) => {{
+    const prev = reversed[idx + 1];
+    const prevPrice = prev ? prev.price_eur : null;
+    const prevKm = prev ? prev.mileage_km : null;
+    const ts = row.until_at
+      ? `<span title="${{esc(row.until_at)}}">${{fmtDateTime(row.captured_at)}}</span> <span class="collapsed-hint">bis ${{fmtDateTime(row.until_at)}} (×${{row.count}})</span>`
+      : fmtDateTime(row.captured_at);
+    if (row.change_type === 'went_offline' || row.change_type === 'came_online') {{
+      return `<tr class="online-event"><td>${{ts}}</td><td><span class="change-badge ${{row.change_type}}">${{changeLabel(row.change_type)}}</span></td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td></tr>`;
+    }}
+    let priceDelta = '<td class="muted">—</td>';
+    if (row.price_eur != null && prevPrice != null) {{
+      const d = row.price_eur - prevPrice;
+      priceDelta = d === 0 ? '<td class="muted">±0</td>' : `<td class="${{d > 0 ? 'delta-down' : 'delta-up'}}">${{fmtDelta(d)}} €</td>`;
+    }}
+    let kmDelta = '<td class="muted">—</td>';
+    if (row.mileage_km != null && prevKm != null) {{
+      const d = row.mileage_km - prevKm;
+      kmDelta = d === 0 ? '<td class="muted">±0</td>' : `<td class="${{d > 0 ? 'delta-down' : 'delta-up'}}">${{fmtDelta(d)}} km</td>`;
+    }}
+    return `<tr><td>${{ts}}</td><td><span class="change-badge ${{row.change_type}}">${{changeLabel(row.change_type)}}</span></td><td>${{fmtEur(row.price_eur)}}</td>${{priceDelta}}<td>${{fmtKm(row.mileage_km)}}</td>${{kmDelta}}</tr>`;
+  }}).join('');
+  return `<section class="panel"><h2>Verlauf</h2>${{renderHistorySummary(summary)}}${{renderPriceChart(series)}}<table class="history-table"><thead><tr><th>Zeit</th><th>Änderung</th><th>Preis</th><th>Δ Preis</th><th>km</th><th>Δ km</th></tr></thead><tbody>${{rows || '<tr><td colspan="6">Noch kein Verlauf.</td></tr>'}}</tbody></table></section>`;
 }}
 async function renderDetailPage(item) {{
   const grid = document.getElementById('listings');
@@ -494,7 +600,7 @@ async function renderDetailPage(item) {{
   const response = await fetch('/api/listings/' + encodeURIComponent(item.id) + '/history');
   const payload = response.ok ? await response.json() : {{history: []}};
   const detailFields = renderAllFields(item);
-  grid.innerHTML = `<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button></div><p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>${{renderHistory(payload.history)}}`;
+  grid.innerHTML = `<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button></div><p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>${{renderHistory(payload.history, payload.online_history || [], payload.summary, payload.series)}}`;
 }}
 function renderOverviewPage() {{
   const grid = document.getElementById('listings');

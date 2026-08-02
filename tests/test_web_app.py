@@ -80,9 +80,14 @@ def test_web_api_returns_listing_history(tmp_path: Path):
 
         assert status == 200
         assert payload["listing_id"] == "autoscout24_123"
-        assert [row["change_type"] for row in payload["history"]] == ["manual_override", "new"]
-        assert payload["history"][0]["price_eur"] == 52900
+        # ASC order: new first, then manual_override
+        assert [row["change_type"] for row in payload["history"]] == ["new", "manual_override"]
+        assert payload["history"][1]["price_eur"] == 52900
         assert "captured_at" in payload["history"][0]
+        assert "summary" in payload
+        assert "series" in payload
+        assert "online_history" in payload
+        assert payload["summary"]["snapshot_count"] == 2
     finally:
         server.shutdown()
         thread.join(timeout=5)
