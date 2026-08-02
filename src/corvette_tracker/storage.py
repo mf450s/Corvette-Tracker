@@ -7,6 +7,7 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
+from .enums import TrimType
 from .models import Listing
 from .validation import sanity_check_against_previous
 
@@ -323,6 +324,11 @@ class TrackerStore:
             data["validation_flags"] = []
         if data.get("ai_enrichment") is None:
             data["ai_enrichment"] = {}
+        if data.get("trim") is not None:
+            try:
+                data["trim"] = TrimType(data["trim"])
+            except ValueError:
+                data["trim"] = None
         return Listing(**data)
 
     def list_active(self) -> list[Listing]:
