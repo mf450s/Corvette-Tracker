@@ -173,7 +173,32 @@ LISTING_FIELDS = {field.name for field in fields(Listing)}
 PROTECTED_OVERRIDE_FIELDS = {"id", "source", "source_listing_id", "url", "change_type", "previous_price_eur", "cluster_id"}
 EDITABLE_FIELDS = LISTING_FIELDS - PROTECTED_OVERRIDE_FIELDS
 
+# Columns added to SCHEMA after the table first shipped. CREATE TABLE IF NOT
+# EXISTS only creates missing tables — it never adds columns to existing ones,
+# so databases created earlier must be migrated here or upserts break with
+# "no such column".
+REQUIRED_COLUMNS: dict[str, dict[str, str]] = {
+    "listings": {
+        "hidden": "INTEGER NOT NULL DEFAULT 0",
+    },
+}
+
 log = logging.getLogger(__name__)
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Add columns that are missing from pre-existing tables."""
+    for table, columns in REQUIRED_COLUMNS.items():
+        existing = {
+            row[1] for row in conn.execute(f"PRAGMA table_info({table})")
+        }
+        for column, definition in columns.items():
+            if column not in existing:
+                log.info("Migrating %s: adding column %s", table, column)
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                )
+    conn.commit()
 
 
 class TrackerStore:
@@ -183,6 +208,7 @@ class TrackerStore:
         self.conn = sqlite3.connect(self.path, check_same_thread=False, timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        _migrate_schema(self.conn)
         self.conn.commit()
 
     def _overrides_for(self, listing_id: str) -> dict[str, Any]:
@@ -423,6 +449,28 @@ class TrackerStore:
             (listing_id,),
         ).fetchone()
         return dict(row) if row else None
+
+    def update_listing_url(self, listing_id: str, new_url: str) -> bool:
+        """Adopt a new canonical URL for an existing listing.
+
+        The URL lives inside ``payload_json`` (there is no dedicated column),
+        so only the payload row is rewritten.  The listing id — derived from
+        the stable source identifier — stays unchanged.
+
+        Returns True when a change was applied, False when the listing is
+        missing or the URL already matches.
+        """
+        listing = self.get_listing(listing_id)
+        if listing is None or listing.url == new_url:
+            return False
+        listing.url = new_url
+        payload = json.dumps(listing.to_dict(), ensure_ascii=False, sort_keys=True)
+        self.conn.execute(
+            "UPDATE listings SET payload_json = ? WHERE id = ?",
+            (payload, listing_id),
+        )
+        self.conn.commit()
+        return True
 
     def list_online_statuses(
         self,

@@ -315,6 +315,69 @@ def test_check_single_url_redirect_not_followed():
         server.shutdown()
 
 
+# --- Canonical (same-listing) redirect tests ---
+
+
+def test_check_single_url_canonical_redirect_is_online():
+    """A redirect that preserves the listing identity (e.g. AutoScout24 URL
+    rewrite) is a canonicalization — the offer is still online."""
+    guid = "e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
+    handler_cls = make_redirect_handler(redirects={
+        f"/angebote/corvette-zr1-old-{guid}": f"/angebote/corvette-zr1-new-{guid}",
+    })
+    server, base_url = serve(handler_cls)
+    try:
+        status, error = _check_single_url(
+            f"{base_url}/angebote/corvette-zr1-old-{guid}"
+        )
+        assert status == 200
+        assert error is None
+    finally:
+        server.shutdown()
+
+
+def test_check_single_url_redirect_to_homepage_still_offline():
+    """A redirect to a page without the listing identity stays offline."""
+    guid = "e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
+    handler_cls = make_redirect_handler(redirects={
+        f"/offer-{guid}": "/homepage",
+    })
+    server, base_url = serve(handler_cls)
+    try:
+        status, error = _check_single_url(f"{base_url}/offer-{guid}")
+        assert status == 302
+        assert 300 <= status < 400
+    finally:
+        server.shutdown()
+
+
+def test_check_stale_offers_canonical_redirect_updates_url(tmp_path: Path):
+    """A canonical redirect keeps the listing online and adopts the new URL."""
+    guid = "e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
+    handler_cls = make_redirect_handler(redirects={
+        f"/old/offer-{guid}": f"/new/offer-{guid}",
+    })
+    server, base_url = serve(handler_cls)
+    try:
+        store = TrackerStore(tmp_path / "tracker.sqlite")
+        store.upsert_listings([make_listing(url=f"{base_url}/old/offer-{guid}")])
+
+        summary = check_stale_offers(store, force=True)
+        assert summary["online"] == 1
+        assert summary["offline"] == 0
+
+        cached = store.get_online_status("autoscout24_123")
+        assert cached is not None
+        assert cached["is_online"] == 1
+        assert cached["http_status"] == 200
+
+        updated = store.get_listing("autoscout24_123")
+        assert updated is not None
+        assert updated.url == f"{base_url}/new/offer-{guid}"
+    finally:
+        server.shutdown()
+
+
 # --- Content-based not-found detection ---
 
 

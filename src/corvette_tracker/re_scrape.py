@@ -161,11 +161,22 @@ def _re_scrape_autoscout24(
         if listing is None:
             listing = fresh
         else:
-            # Merge fresh image URLs (detail page has full resolution)
+            # Merge fresh detail-page fields into the existing listing
             if fresh.image_urls:
                 listing.image_urls = [
                     normalize_autoscout24_image_url(u) for u in fresh.image_urls
                 ]
+            # AutoScout24 rewrites offer URL slugs (taxonomy migrations).
+            # Adopt the canonical URL/title so later checks and re-scrapes
+            # resolve directly and stale title prices are dropped.
+            if fresh.url and fresh.url != listing.url:
+                listing.url = fresh.url
+            if fresh.title and fresh.title != listing.title:
+                listing.title = fresh.title
+            # The description is derived from title/details — refresh it too,
+            # otherwise a stale title price (e.g. "EXP € 109.480,-") lingers.
+            if fresh.description_text and fresh.description_text != listing.description_text:
+                listing.description_text = fresh.description_text
             # Update price/mileage if the detail page shows different values
             if fresh.price_eur is not None:
                 listing.price_eur = fresh.price_eur

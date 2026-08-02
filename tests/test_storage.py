@@ -31,6 +31,66 @@ def test_store_marks_first_seen_listing_as_new(tmp_path: Path):
     assert store.list_active()[0].id == "autoscout24_123"
 
 
+def test_update_listing_url_adopts_canonical_url(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+
+    new_url = "https://example.test/listing/123-canonical"
+    changed = store.update_listing_url("autoscout24_123", new_url)
+
+    assert changed is True
+    listing = store.get_listing("autoscout24_123")
+    assert listing is not None
+    assert listing.url == new_url
+    # id is stable, other fields untouched
+    assert listing.price_eur == 54900
+    assert listing.title == "Chevrolet Corvette C6 Grand Sport"
+
+
+def test_update_listing_url_noop_when_same(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+
+    changed = store.update_listing_url(
+        "autoscout24_123", "https://example.test/listing/123"
+    )
+    assert changed is False
+
+
+def test_update_listing_url_unknown_listing(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    changed = store.update_listing_url("nope", "https://example.test/x")
+    assert changed is False
+
+
+def test_store_migrates_missing_hidden_column(tmp_path: Path):
+    """A database created before the hidden column existed still works."""
+    import sqlite3
+
+    db_path = tmp_path / "legacy.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE listings (id TEXT PRIMARY KEY, payload_json TEXT NOT NULL, "
+        "price_eur INTEGER, mileage_km INTEGER, "
+        "last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    )
+    conn.commit()
+    conn.close()
+
+    # Opening the store must migrate the missing column
+    store = TrackerStore(db_path)
+    store.upsert_listings([make_listing()])
+
+    listing = store.get_listing("autoscout24_123")
+    assert listing is not None
+    assert listing.hidden is False
+
+    # Second open is idempotent
+    store2 = TrackerStore(db_path)
+    assert store2.get_listing("autoscout24_123") is not None
+
+
 def test_store_detects_price_change_on_second_run(tmp_path: Path):
     store = TrackerStore(tmp_path / "tracker.sqlite")
     store.upsert_listings([make_listing(price=54900)])
