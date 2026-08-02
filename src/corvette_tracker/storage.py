@@ -281,7 +281,9 @@ class TrackerStore:
                 )
                 result.append(listing)
             except Exception as exc:
-                failed.append((getattr(source_listing, "url", "?"), str(exc)))
+                url = getattr(source_listing, "url", "?")
+                failed.append((url, str(exc)))
+                log.warning("listing %s failed to store: %s", url, exc)
         self.conn.commit()
 
         if failed:

@@ -287,3 +287,25 @@ def test_upsert_logs_failures_and_still_stores_valid(tmp_path: Path, caplog):
     assert store.get_listing("valid") is not None
     assert store.get_listing("invalid") is None
     assert "1/2 listings failed" in caplog.text
+
+
+def test_upsert_error_log_includes_url_and_counts(tmp_path: Path, caplog):
+    import logging
+
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+
+    invalid = make_listing(id="invalid")
+    invalid.url = "https://example.test/listing/invalid"
+    invalid.price_eur = ["bad"]  # invalid type for SQLite INTEGER column
+
+    valid = make_listing(id="valid", price=30000)
+
+    with caplog.at_level(logging.ERROR, logger="corvette_tracker.storage"):
+        results = store.upsert_listings([invalid, valid])
+
+    assert len(results) == 1
+    assert results[0].id == "valid"
+    assert store.get_listing("invalid") is None
+    assert store.get_listing("valid") is not None
+    assert "1/2 listings failed" in caplog.text
+    assert "https://example.test/listing/invalid" in caplog.text
