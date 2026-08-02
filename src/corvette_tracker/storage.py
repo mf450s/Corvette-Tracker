@@ -231,6 +231,7 @@ class TrackerStore:
             existing = []
 
         result: list[Listing] = []
+        failed: list[tuple[str, str]] = []
         for source_listing in listings:
             try:
                 listing = self._apply_overrides(source_listing)
@@ -280,10 +281,19 @@ class TrackerStore:
                 )
                 result.append(listing)
             except Exception as exc:
-                log.warning(
-                    "Skipping listing %s: %s", getattr(source_listing, "url", "?"), exc
-                )
+                url = getattr(source_listing, "url", "?")
+                failed.append((url, str(exc)))
+                log.warning("listing %s failed to store: %s", url, exc)
         self.conn.commit()
+
+        if failed:
+            log.error(
+                "upsert: %d/%d listings failed. First %d errors: %s",
+                len(failed),
+                len(listings),
+                min(3, len(failed)),
+                "; ".join(f"{url}: {msg}" for url, msg in failed[:3]),
+            )
         return result
 
     def get_listing(self, listing_id: str) -> Listing | None:
