@@ -14,3 +14,4 @@ feed/latest.md
 feed/archive/*.md
 data/exports/*.json
 data/exports/*.csv
+.aider*
