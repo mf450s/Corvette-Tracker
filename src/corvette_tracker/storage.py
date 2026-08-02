@@ -168,6 +168,15 @@ CREATE TABLE IF NOT EXISTS offer_online_status (
   error_message TEXT,
   FOREIGN KEY(listing_id) REFERENCES listings(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS online_status_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id TEXT NOT NULL,
+  captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  is_online INTEGER NOT NULL,
+  http_status INTEGER,
+  error_message TEXT,
+  FOREIGN KEY(listing_id) REFERENCES listings(id) ON DELETE CASCADE
+);
 """
 
 LISTING_FIELDS = {field.name for field in fields(Listing)}
@@ -335,27 +344,137 @@ class TrackerStore:
         rows = self.conn.execute("SELECT payload_json FROM listings ORDER BY COALESCE(price_eur, 999999999), id").fetchall()
         return [self._deserialize_listing(row["payload_json"]) for row in rows]
 
-    def listing_history(self, listing_id: str, limit: int = 50) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
+    def listing_history(self, listing_id: str, limit: int = 500) -> dict[str, Any]:
+        # Fetch all snapshots ordered by captured_at ascending regardless of limit for
+        # series and summary computations.
+        all_rows = self.conn.execute(
             """
             SELECT captured_at, price_eur, mileage_km, change_type, payload_json
             FROM snapshots
             WHERE listing_id = ?
-            ORDER BY captured_at DESC, id DESC
-            LIMIT ?
+            ORDER BY captured_at ASC, id ASC
             """,
-            (listing_id, limit),
+            (listing_id,),
         ).fetchall()
-        return [
-            {
-                "captured_at": row["captured_at"],
-                "price_eur": row["price_eur"],
-                "mileage_km": row["mileage_km"],
-                "change_type": row["change_type"],
-                "listing": json.loads(row["payload_json"]),
+
+        if not all_rows:
+            return {
+                "history": [],
+                "series": [],
+                "summary": {
+                    "first_seen_at": None,
+                    "last_seen_at": None,
+                    "price_changes": 0,
+                    "metadata_changes": 0,
+                    "manual_overrides": 0,
+                    "first_price_eur": None,
+                    "current_price_eur": None,
+                    "price_min_eur": None,
+                    "price_max_eur": None,
+                    "snapshot_count": 0,
+                },
             }
-            for row in rows
-        ]
+
+        # Build chronological history entries
+        entries: list[dict[str, Any]] = []
+        i = 0
+        n = len(all_rows)
+        while i < n:
+            row = all_rows[i]
+            ct = row["change_type"]
+            if ct == "unchanged":
+                # start a consecutive run of unchanged snapshots
+                start_row = row
+                first_captured = row["captured_at"]
+                last_captured = row["captured_at"]
+                first_price = row["price_eur"]
+                first_mileage = row["mileage_km"]
+                count = 1
+                j = i + 1
+                while j < n and all_rows[j]["change_type"] == "unchanged":
+                    last_captured = all_rows[j]["captured_at"]
+                    count += 1
+                    j += 1
+                entry = {
+                    "captured_at": first_captured,
+                    "until_at": last_captured,
+                    "change_type": "unchanged",
+                    "price_eur": first_price,
+                    "mileage_km": first_mileage,
+                    "is_collapsed": count > 1,
+                    "count": count,
+                }
+                entries.append(entry)
+                i = j
+            else:
+                # non-unchanged snapshot
+                entry = {
+                    "captured_at": row["captured_at"],
+                    "price_eur": row["price_eur"],
+                    "mileage_km": row["mileage_km"],
+                    "change_type": ct,
+                    "listing": json.loads(row["payload_json"]),
+                }
+                entries.append(entry)
+                i += 1
+
+        # Cap history to last `limit` entries (most recent)
+        if len(entries) > limit:
+            entries = entries[-limit:]
+
+        # Series: emit {captured_at, price_eur} for snapshots with price, dedupe consecutive
+        series: list[dict[str, Any]] = []
+        prev_price = None
+        max_points = 200
+        for row in all_rows:
+            price = row["price_eur"]
+            if price is None:
+                continue
+            if price != prev_price:
+                series.append({"captured_at": row["captured_at"], "price_eur": price})
+                prev_price = price
+                if len(series) >= max_points:
+                    break
+        if len(series) < 2:
+            series = []
+
+        # Summary computations
+        first_seen_at = all_rows[0]["captured_at"]
+        last_seen_at = all_rows[-1]["captured_at"]
+        price_changes = sum(1 for r in all_rows if r["change_type"] == "price_change")
+        metadata_changes = sum(1 for r in all_rows if r["change_type"] == "metadata_change")
+        manual_overrides = sum(1 for r in all_rows if r["change_type"] == "manual_override")
+
+        priced = [r for r in all_rows if r["price_eur"] is not None]
+        if priced:
+            first_price_eur = priced[0]["price_eur"]
+            current_price_eur = priced[-1]["price_eur"]
+            price_min_eur = min(r["price_eur"] for r in priced)
+            price_max_eur = max(r["price_eur"] for r in priced)
+        else:
+            first_price_eur = None
+            current_price_eur = None
+            price_min_eur = None
+            price_max_eur = None
+
+        summary = {
+            "first_seen_at": first_seen_at,
+            "last_seen_at": last_seen_at,
+            "price_changes": price_changes,
+            "metadata_changes": metadata_changes,
+            "manual_overrides": manual_overrides,
+            "first_price_eur": first_price_eur,
+            "current_price_eur": current_price_eur,
+            "price_min_eur": price_min_eur,
+            "price_max_eur": price_max_eur,
+            "snapshot_count": n,
+        }
+
+        return {
+            "history": entries,
+            "series": series,
+            "summary": summary,
+        }
 
     def update_overrides(self, listing_id: str, updates: dict[str, Any]) -> Listing:
         current = self.get_listing(listing_id)
@@ -441,6 +560,10 @@ class TrackerStore:
 
         Returns the current row as dict: {listing_id, is_online, last_checked_at, http_status, error_message}
         """
+        current = self.get_online_status(listing_id)
+        new_online = int(is_online)
+        should_log_transition = (current is None) or (current["is_online"] != new_online)
+
         self.conn.execute(
             """INSERT INTO offer_online_status (listing_id, is_online, http_status, error_message, last_checked_at)
                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -449,14 +572,39 @@ class TrackerStore:
                  http_status=excluded.http_status,
                  error_message=excluded.error_message,
                  last_checked_at=CURRENT_TIMESTAMP""",
-            (listing_id, int(is_online), http_status, error_message),
+            (listing_id, new_online, http_status, error_message),
         )
         self.conn.commit()
+        if should_log_transition:
+            self.conn.execute(
+                """INSERT INTO online_status_history (listing_id, is_online, http_status, error_message)
+                   VALUES (?, ?, ?, ?)""",
+                (listing_id, new_online, http_status, error_message),
+            )
+            self.conn.commit()
         row = self.conn.execute(
             "SELECT listing_id, is_online, last_checked_at, http_status, error_message FROM offer_online_status WHERE listing_id = ?",
             (listing_id,),
         ).fetchone()
         return dict(row)
+
+    def online_status_history(self, listing_id: str) -> list[dict[str, Any]]:
+        """Chronological ASC list of status transitions: {captured_at, is_online, http_status}"""
+        rows = self.conn.execute(
+            """SELECT captured_at, is_online, http_status
+               FROM online_status_history
+               WHERE listing_id = ?
+               ORDER BY captured_at ASC, id ASC""",
+            (listing_id,),
+        ).fetchall()
+        return [
+            {
+                "captured_at": row["captured_at"],
+                "is_online": row["is_online"],
+                "http_status": row["http_status"],
+            }
+            for row in rows
+        ]
 
     def get_online_status(self, listing_id: str) -> dict | None:
         """Get current online status for a listing, or None if never checked."""
