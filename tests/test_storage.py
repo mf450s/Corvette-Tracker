@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from corvette_tracker.enums import TrimType
 from corvette_tracker.models import Listing
 from corvette_tracker.storage import TrackerStore
 
@@ -168,6 +169,30 @@ def test_list_online_statuses_all_when_no_filter(tmp_path: Path):
     store.upsert_listings([make_listing(id="x", price=10000)])
     store.update_online_status("x", is_online=True)
     assert len(store.list_online_statuses()) == 1
+
+
+# ── Trim type safety ──────────────────────────────────────────────────
+
+
+def test_deserialize_coerces_trim_to_enum_and_handles_invalid(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+
+    valid = make_listing(id="valid-trim")
+    valid.trim = "Z06"
+    store.upsert_listings([valid])
+
+    loaded = store.get_listing("valid-trim")
+    assert loaded is not None
+    assert loaded.trim == TrimType.Z06
+    assert isinstance(loaded.trim, TrimType)
+
+    invalid = make_listing(id="invalid-trim")
+    invalid.trim = "Lamborghini"
+    store.upsert_listings([invalid])
+
+    loaded_invalid = store.get_listing("invalid-trim")
+    assert loaded_invalid is not None
+    assert loaded_invalid.trim is None  # no crash, invalid value becomes None
 
 
 # ── Hide / Unhide ──────────────────────────────────────────────────────
