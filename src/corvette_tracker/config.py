@@ -93,10 +93,15 @@ class ScoringConfig(BaseModel):
     """Complete scoring configuration block."""
 
     base_score: int = 20
+    total_budget: int = 80
     weights: ScoringWeights = Field(default_factory=ScoringWeights)
     preferred_trims: list[str] = Field(
         default_factory=lambda: ["Grand Sport", "Z06", "ZR1"]
     )
+    budget: dict[str, int] = Field(default_factory=lambda: {
+        "engine": 15, "transmission": 10, "trim": 8,
+        "body": 6, "mileage": 6, "completeness": 3, "eu_spec": 2,
+    })
     risk_penalties: RiskPenalties = Field(default_factory=RiskPenalties)
 
     model_config = {"extra": "ignore"}
@@ -112,7 +117,9 @@ class ScoringConfig(BaseModel):
         """Return the legacy flat dict format expected by scoring.py."""
         return {
             "base_score": self.base_score,
+            "total_budget": self.total_budget,
             "weights": self.weights.model_dump(),
+            "budget": dict(self.budget),
             "preferred_trims": self.preferred_trims,
             "risk_penalties": self.risk_penalties.model_dump(),
         }

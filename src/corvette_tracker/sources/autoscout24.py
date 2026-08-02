@@ -72,7 +72,7 @@ def _parse_next_data(soup: BeautifulSoup, base_url: str) -> list[Listing]:
         price = raw.get("price") or {}
         location = raw.get("location") or {}
         location_raw = " ".join(str(x).strip() for x in [location.get("zip"), location.get("city")] if str(x or "").strip())
-        url = urljoin(base_url, raw.get("url") or "")
+        url = urljoin(base_url, raw.get("url") or raw.get("webPage") or "")
         vehicle_values = " ".join(str(value) for value in vehicle.values() if isinstance(value, str | int | float))
         description = " ".join([title, details, vehicle_values, location_raw])
         listing = normalize_listing(
