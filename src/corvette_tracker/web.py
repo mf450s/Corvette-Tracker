@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import yaml
 
+from .enums import TrimType
 from .feed import build_feed_payload, format_eur, format_km, write_exports
 from .health import CACHE_TTL_SECONDS, check_stale_offers, get_cached_status
 from .models import Listing
@@ -295,12 +296,14 @@ def render_app_shell() -> str:
     boolean_fields = {"eu_spec", "has_damage"}
     list_fields = {"equipment", "visual_flags", "image_urls", "risk_flags", "inference_notes", "conflict_flags"}
     dict_fields = {"ai_enrichment"}
+    trim_options = [trim.value for trim in TrimType]
     field_registry = [
         {
             "name": field.name,
             "editable": field.name in EDITABLE_FIELDS,
             "protected": field.name in PROTECTED_OVERRIDE_FIELDS,
-            "kind": "number" if field.name in numeric_fields else "boolean" if field.name in boolean_fields else "list" if field.name in list_fields else "json" if field.name in dict_fields else "text",
+            "kind": "select" if field.name == "trim" else "number" if field.name in numeric_fields else "boolean" if field.name in boolean_fields else "list" if field.name in list_fields else "json" if field.name in dict_fields else "text",
+            "options": trim_options if field.name == "trim" else None,
         }
         for field in fields(Listing)
     ]
@@ -384,6 +387,7 @@ function parseEditorValue(raw, kind) {{
   if (raw === '') return null;
   if (kind === 'number') return Number(raw);
   if (kind === 'boolean') return raw === 'true' ? true : raw === 'false' ? false : null;
+  if (kind === 'select') return raw;
   if (kind === 'list') return raw.split(',').map(value => value.trim()).filter(Boolean);
   if (kind === 'json') return JSON.parse(raw);
   return raw;
@@ -465,6 +469,10 @@ function inlineEditorValue(field, item) {{
   if (!field.editable) return `<div class="field-editor readonly-field"><span>${{esc(field.name)}}</span><strong>${{esc(displayValue(value))}}</strong></div>`;
   if (field.kind === 'boolean') {{
     return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.name)}}</label><select data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}"><option value="" ${{value == null ? 'selected' : ''}}>k.A.</option><option value="true" ${{value === true ? 'selected' : ''}}>ja</option><option value="false" ${{value === false ? 'selected' : ''}}>nein</option></select></div>`;
+  }}
+  if (field.kind === 'select' && Array.isArray(field.options)) {{
+    const options = field.options.map(option => `<option value="${{esc(option)}}" ${{value === option ? 'selected' : ''}}>${{esc(option)}}</option>`).join('');
+    return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.name)}}</label><select data-field-name="${{esc(field.name)}}" data-field-kind="select"><option value="" ${{value == null || value === '' ? 'selected' : ''}}>k.A.</option>${{options}}</select></div>`;
   }}
   const tag = field.kind === 'json' || field.kind === 'list' || field.name === 'description_text' ? 'textarea' : 'input';
   const input = tag === 'textarea'

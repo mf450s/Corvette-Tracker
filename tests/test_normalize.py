@@ -1,3 +1,7 @@
+import json
+
+from corvette_tracker.enums import TrimType
+from corvette_tracker.models import Listing
 from corvette_tracker.normalize import (
     detect_c6_candidate,
     extract_engine,
@@ -353,3 +357,25 @@ def test_normalize_listing_returns_structured_c6_listing_with_score():
     assert listing.power_hp == 512
     assert listing.image_urls == ["https://example.test/image.jpg"]
     assert listing.score > 0
+
+
+def test_extract_trim_returns_trim_type():
+    assert extract_trim("Chevrolet Corvette C6 Z06") == TrimType.Z06
+    assert extract_trim("Chevrolet Corvette C6 Grand Sport LS3") == TrimType.GRAND_SPORT
+    assert extract_trim("Chevrolet Corvette C6") == TrimType.BASE
+    assert extract_trim("Chevrolet Corvette C6 ZR1 ZR 1") == TrimType.ZR1
+
+
+def test_listing_trim_enum_roundtrip_via_json():
+    listing = Listing(
+        id="roundtrip",
+        source="test",
+        source_listing_id=None,
+        url="https://example.test/c6",
+        title="Test",
+        trim=TrimType.Z06,
+    )
+    payload = json.loads(json.dumps(listing.to_dict()))
+    assert payload["trim"] == "Z06"
+    restored = Listing(**payload)
+    assert restored.trim == TrimType.Z06
