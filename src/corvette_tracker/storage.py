@@ -344,6 +344,10 @@ class TrackerStore:
         rows = self.conn.execute("SELECT payload_json FROM listings ORDER BY COALESCE(price_eur, 999999999), id").fetchall()
         return [self._deserialize_listing(row["payload_json"]) for row in rows]
 
+    def created_at_map(self) -> dict[str, str]:
+        rows = self.conn.execute("SELECT id, created_at FROM listings").fetchall()
+        return {row["id"]: row["created_at"] for row in rows}
+
     def listing_history(self, listing_id: str, limit: int = 500) -> dict[str, Any]:
         # Fetch all snapshots ordered by captured_at ascending regardless of limit for
         # series and summary computations.
