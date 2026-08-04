@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import uuid
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
@@ -264,6 +265,11 @@ class TrackerStore:
                     # Preserve hidden status across re-scrapes
                     if previous["hidden"]:
                         listing.hidden = True
+                    # Sticky cluster assignment: keep persisted cluster_id if any
+                    prev_payload = json.loads(previous["payload_json"])
+                    stored_cluster = prev_payload.get("cluster_id")
+                    if stored_cluster:
+                        listing.cluster_id = stored_cluster
                     if previous["price_eur"] != listing.price_eur:
                         listing.change_type = "price_change"
                         listing.previous_price_eur = previous["price_eur"]
@@ -639,6 +645,48 @@ class TrackerStore:
         )
         self.conn.commit()
         return True
+
+    def merge_listings(self, listing_ids: list[str]) -> dict:
+        """Manually merge two or more listings into the same cluster.
+
+        Assigns the same manual_* cluster_id to all provided listings.
+        Does not create snapshots or alter offer data beyond cluster grouping.
+        """
+        missing = [lid for lid in listing_ids if self.get_listing(lid) is None]
+        if missing:
+            raise KeyError(f"Unknown listings: {', '.join(missing)}")
+
+        group_id = "manual_" + uuid.uuid4().hex[:12]
+        updated_listings: list[Listing] = []
+        for lid in listing_ids:
+            listing = self.get_listing(lid)
+            listing.cluster_id = group_id
+            payload = json.dumps(listing.to_dict(), ensure_ascii=False, sort_keys=True)
+            self.conn.execute(
+                "UPDATE listings SET payload_json = ? WHERE id = ?",
+                (payload, lid),
+            )
+            updated_listings.append(listing)
+        self.conn.commit()
+        return {
+            "group_id": group_id,
+            "listing_ids": listing_ids,
+            "listings": [l.to_dict() for l in updated_listings],
+        }
+
+    def unmerge_listing(self, listing_id: str) -> Listing:
+        """Remove a listing from its manual/automatic cluster group."""
+        listing = self.get_listing(listing_id)
+        if listing is None:
+            raise KeyError(f"Unknown listing: {listing_id}")
+        listing.cluster_id = None
+        payload = json.dumps(listing.to_dict(), ensure_ascii=False, sort_keys=True)
+        self.conn.execute(
+            "UPDATE listings SET payload_json = ? WHERE id = ?",
+            (payload, listing_id),
+        )
+        self.conn.commit()
+        return listing
 
     def list_online_statuses(
         self,

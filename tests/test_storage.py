@@ -404,3 +404,56 @@ def test_upsert_error_log_includes_url_and_counts(tmp_path: Path, caplog):
     assert store.get_listing("valid") is not None
     assert "1/2 listings failed" in caplog.text
     assert "https://example.test/listing/invalid" in caplog.text
+
+
+# ── Manual cluster merges ─────────────────────────────────────────────────
+
+
+def test_sticky_cluster_id_survives_upsert(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+
+    first = make_listing(id="sticky-car", price=40000)
+    first.cluster_id = "manual_abc123"
+    store.upsert_listings([first])
+
+    # Re-scrape with a newly computed (different) cluster_id
+    second = make_listing(id="sticky-car", price=40000)
+    second.cluster_id = "soft_full_xyz"
+    store.upsert_listings([second])
+
+    listing = store.get_listing("sticky-car")
+    assert listing is not None
+    assert listing.cluster_id == "manual_abc123"
+
+
+def test_merge_listings_assigns_manual_cluster_id(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    a = make_listing(id="merge-a", price=50000)
+    b = make_listing(id="merge-b", price=52000)
+    store.upsert_listings([a, b])
+
+    result = store.merge_listings(["merge-a", "merge-b"])
+
+    assert result["group_id"].startswith("manual_")
+    assert result["listing_ids"] == ["merge-a", "merge-b"]
+    assert len(result["listings"]) == 2
+
+    merged_a = store.get_listing("merge-a")
+    merged_b = store.get_listing("merge-b")
+    assert merged_a.cluster_id == result["group_id"]
+    assert merged_b.cluster_id == result["group_id"]
+
+
+def test_unmerge_listing_clears_cluster_id(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    a = make_listing(id="unmerge-a", price=50000)
+    b = make_listing(id="unmerge-b", price=52000)
+    store.upsert_listings([a, b])
+    result = store.merge_listings(["unmerge-a", "unmerge-b"])
+
+    updated = store.unmerge_listing("unmerge-a")
+
+    assert updated.cluster_id is None
+    assert store.get_listing("unmerge-a").cluster_id is None
+    # The other listing stays in the group
+    assert store.get_listing("unmerge-b").cluster_id == result["group_id"]
