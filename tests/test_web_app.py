@@ -220,7 +220,9 @@ def test_web_shell_overview_links_directly_to_original_offer_and_keeps_detail_ed
     assert "openDetail(event" in html
     assert "car/" in html
     assert "overview-specs" in html
-    assert "sorted.map(item => renderOverviewCard(item))" in html
+    assert "sortedPrimaries.map" in html
+    assert "renderOverviewCard(item, group)" in html
+    assert "offer-badge" in html
 
 
 def test_web_shell_shows_score_badge_on_overview_preview_image():

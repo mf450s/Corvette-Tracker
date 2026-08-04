@@ -679,7 +679,63 @@ async function renderDetailPage(item) {{
   const response = await fetch('/api/listings/' + encodeURIComponent(item.id) + '/history');
   const payload = response.ok ? await response.json() : {{history: []}};
   const detailFields = renderAllFields(item);
-  grid.innerHTML = `${{renderHistory(payload.history, payload.online_history || [], payload.summary, payload.series)}}<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button></div><p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>`;
+  const groupMembers = item.cluster_id ? currentListings.filter(l => l.cluster_id === item.cluster_id) : [item];
+  let groupPanel = '';
+  if (groupMembers.length > 1) {{
+    groupPanel = `<section class="panel"><h2>Angebote dieser Gruppe</h2><select id="offer-switch" onchange="switchOffer(this.value)">${{groupMembers.map(member => `<option value="${{esc(member.id)}}" ${{member.id === item.id ? 'selected' : ''}}>${{esc(member.source)}} · ${{fmtEur(member.price_eur)}} · ${{statusLabel(getStatus(member.id))}}</option>`).join('')}}</select></section>`;
+  }}
+  const mergeButtons = [];
+  mergeButtons.push(`<button class="button secondary" onclick="toggleMergePicker('${{esc(item.id)}}')">Mit Angebot mergen</button>`);
+  if (item.cluster_id && item.cluster_id.startsWith('manual_')) {{
+    mergeButtons.push(`<button class="button secondary" onclick="unmergeOffer('${{esc(item.id)}}')">Vom Cluster trennen</button>`);
+  }}
+  const mergeButtonsHtml = mergeButtons.join('');
+  grid.innerHTML = `${{groupPanel}}${{renderHistory(payload.history, payload.online_history || [], payload.summary, payload.series)}}<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button>${{mergeButtonsHtml}}</div><p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>`;
+}}
+function switchOffer(id) {{
+  history.pushState({{id: id}}, '', '/car/' + encodeURIComponent(id));
+  renderRoute();
+}}
+function toggleMergePicker(currentId) {{
+  const picker = document.getElementById('merge-picker');
+  if (picker) {{
+    picker.remove();
+    return;
+  }}
+  const current = currentListings.find(item => item.id === currentId);
+  if (!current) return;
+  const candidates = currentListings.filter(item => item.id !== currentId && (!current.cluster_id || item.cluster_id !== current.cluster_id));
+  if (candidates.length === 0) {{
+    alert('Keine anderen Angebote zum Mergen vorhanden.');
+    return;
+  }}
+  const rows = candidates.map(candidate => {{
+    const maxPrice = Math.max(current.price_eur || 0, candidate.price_eur || 0);
+    const priceDiff = maxPrice > 0 ? Math.abs((current.price_eur || 0) - (candidate.price_eur || 0)) / maxPrice : 0;
+    const maxKm = Math.max(current.mileage_km || 0, candidate.mileage_km || 0);
+    const kmDiff = maxKm > 0 ? Math.abs((current.mileage_km || 0) - (candidate.mileage_km || 0)) / maxKm : 0;
+    const priceWarn = priceDiff > 0.2 ? ' <span class="muted">(Preis weicht stark ab)</span>' : '';
+    const kmWarn = kmDiff > 0.2 ? ' <span class="muted">(km weicht stark ab)</span>' : '';
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${{esc(candidate.source)}} · ${{esc(candidate.title)}} · ${{fmtEur(candidate.price_eur)}} · ${{statusLabel(getStatus(candidate.id))}}${{priceWarn}}${{kmWarn}}</span><button class="button secondary" onclick="mergeOffers('${{esc(currentId)}}','${{esc(candidate.id)}}')">Mergen</button></div>`;
+  }}).join('');
+  const html = `<div id="merge-picker" class="panel"><h2>Angebot mergen</h2>${{rows}}</div>`;
+  document.getElementById('listings').insertAdjacentHTML('beforeend', html);
+}}
+async function mergeOffers(aId, bId) {{
+  const response = await fetch('/api/merge', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{listing_ids:[aId,bId]}})}});
+  if (response.ok) {{
+    window.location.reload();
+  }} else {{
+    alert(JSON.stringify(await response.json()));
+  }}
+}}
+async function unmergeOffer(id) {{
+  const response = await fetch('/api/unmerge', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{listing_id:id}})}});
+  if (response.ok) {{
+    window.location.reload();
+  }} else {{
+    alert(JSON.stringify(await response.json()));
+  }}
 }}
 function renderOverviewPage() {{
   const grid = document.getElementById('listings');
