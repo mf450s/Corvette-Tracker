@@ -238,6 +238,44 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             )
             self._send_json(result, status)
             return
+        if path == "/api/merge":
+            try:
+                body = self._read_json_body()
+                listing_ids = body.get("listing_ids")
+                if not isinstance(listing_ids, list) or len(listing_ids) < 2 or not all(isinstance(x, str) and x for x in listing_ids):
+                    raise ValueError("listing_ids: mindestens 2 Angebote erforderlich")
+                result = self.tracker_app.store.merge_listings(listing_ids)
+                self.tracker_app.refresh_exports()
+            except json.JSONDecodeError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            except KeyError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+                return
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(result)
+            return
+        if path == "/api/unmerge":
+            try:
+                body = self._read_json_body()
+                listing_id = body.get("listing_id")
+                if not isinstance(listing_id, str) or not listing_id:
+                    raise ValueError("listing_id erforderlich")
+                updated = self.tracker_app.store.unmerge_listing(listing_id)
+                self.tracker_app.refresh_exports()
+            except json.JSONDecodeError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            except KeyError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+                return
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json({"listing": updated.to_dict()})
+            return
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     def do_PATCH(self) -> None:
@@ -336,6 +374,7 @@ def render_app_shell() -> str:
     .status-dot.online {{ background:#22c55e; box-shadow:0 0 6px rgba(34,197,94,.5); }}
     .status-dot.offline {{ background:#ef4444; box-shadow:0 0 6px rgba(239,68,68,.5); }}
     .status-dot.unknown {{ background:#6b7280; }}
+    .offer-badge {{ display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; background:rgba(239,68,68,.16); color:#f87171; margin-bottom:8px; }}
     .meta-line {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }}
     .filter-input {{ min-width:160px; }}
     .ez-range {{ display:flex; gap:6px; align-items:center; }} .ez-range input {{ width:80px; }}
@@ -465,19 +504,56 @@ function sortListings(listings) {{
     return Number(b.score || 0) - Number(a.score || 0);
   }});
 }}
+function groupListings(listings) {{
+  const groups = [];
+  const byId = new Map();
+  listings.forEach(item => {{
+    const clusterId = item.cluster_id || null;
+    if (clusterId) {{
+      let group = byId.get(clusterId);
+      if (!group) {{
+        group = {{ clusterId: clusterId, members: [] }};
+        byId.set(clusterId, group);
+        groups.push(group);
+      }}
+      group.members.push(item);
+    }} else {{
+      groups.push({{ clusterId: null, members: [item] }});
+    }}
+  }});
+  return groups.map(g => {{
+    const primary = g.members.reduce((best, item) => {{
+      const bestOnline = getStatus(best.id) === 'online';
+      const itemOnline = getStatus(item.id) === 'online';
+      if (bestOnline !== itemOnline) return itemOnline ? item : best;
+      if (best.score === item.score) return best.id < item.id ? best : item;
+      return item.score > best.score ? item : best;
+    }});
+    const sourceSummary = [...new Set(g.members.map(m => m.source).filter(Boolean))].join(' + ');
+    return {{
+      clusterId: g.clusterId,
+      members: g.members,
+      primary: primary,
+      offerCount: g.members.length,
+      sourceSummary: sourceSummary,
+    }};
+  }});
+}}
 function renderListings() {{
   renderRoute();
 }}
 function overviewSpec(label, value) {{ return `<div><dt>${{esc(label)}}</dt><dd>${{esc(displayValue(value))}}</dd></div>`; }}
-function renderOverviewCard(item) {{
+function renderOverviewCard(item, group) {{
   const image = (item.image_urls || [])[0];
   const detailUrl = '/car/' + encodeURIComponent(item.id);
   const offerUrl = item.url || detailUrl;
   const st = getStatus(item.id);
+  const extraBadge = group && group.offerCount > 1 ? `<span class="offer-badge">${{group.offerCount}} Angebote · ${{esc(group.sourceSummary)}}</span>` : '';
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}" data-status="${{st}}">
     <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{esc(item.score ?? 0)}}%</span>${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
     <div class="body">
       <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}} &middot; Score ${{esc(item.score)}}</p>
+      ${{extraBadge}}
       <h2><a class="title-link" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer">${{esc(item.title)}}</a></h2>
       <p class="price">${{fmtEur(item.price_eur)}}</p>
       <dl class="overview-specs">
@@ -603,7 +679,63 @@ async function renderDetailPage(item) {{
   const response = await fetch('/api/listings/' + encodeURIComponent(item.id) + '/history');
   const payload = response.ok ? await response.json() : {{history: []}};
   const detailFields = renderAllFields(item);
-  grid.innerHTML = `${{renderHistory(payload.history, payload.online_history || [], payload.summary, payload.series)}}<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button></div><p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>`;
+  const groupMembers = item.cluster_id ? currentListings.filter(l => l.cluster_id === item.cluster_id) : [item];
+  let groupPanel = '';
+  if (groupMembers.length > 1) {{
+    groupPanel = `<section class="panel"><h2>Angebote dieser Gruppe</h2><select id="offer-switch" onchange="switchOffer(this.value)">${{groupMembers.map(member => `<option value="${{esc(member.id)}}" ${{member.id === item.id ? 'selected' : ''}}>${{esc(member.source)}} · ${{fmtEur(member.price_eur)}} · ${{statusLabel(getStatus(member.id))}}</option>`).join('')}}</select></section>`;
+  }}
+  const mergeButtons = [];
+  mergeButtons.push(`<button class="button secondary" onclick="toggleMergePicker('${{esc(item.id)}}')">Mit Angebot mergen</button>`);
+  if (item.cluster_id && item.cluster_id.startsWith('manual_')) {{
+    mergeButtons.push(`<button class="button secondary" onclick="unmergeOffer('${{esc(item.id)}}')">Vom Cluster trennen</button>`);
+  }}
+  const mergeButtonsHtml = mergeButtons.join('');
+  grid.innerHTML = `${{groupPanel}}${{renderHistory(payload.history, payload.online_history || [], payload.summary, payload.series)}}<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button>${{mergeButtonsHtml}}</div><p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>`;
+}}
+function switchOffer(id) {{
+  history.pushState({{id: id}}, '', '/car/' + encodeURIComponent(id));
+  renderRoute();
+}}
+function toggleMergePicker(currentId) {{
+  const picker = document.getElementById('merge-picker');
+  if (picker) {{
+    picker.remove();
+    return;
+  }}
+  const current = currentListings.find(item => item.id === currentId);
+  if (!current) return;
+  const candidates = currentListings.filter(item => item.id !== currentId && (!current.cluster_id || item.cluster_id !== current.cluster_id));
+  if (candidates.length === 0) {{
+    alert('Keine anderen Angebote zum Mergen vorhanden.');
+    return;
+  }}
+  const rows = candidates.map(candidate => {{
+    const maxPrice = Math.max(current.price_eur || 0, candidate.price_eur || 0);
+    const priceDiff = maxPrice > 0 ? Math.abs((current.price_eur || 0) - (candidate.price_eur || 0)) / maxPrice : 0;
+    const maxKm = Math.max(current.mileage_km || 0, candidate.mileage_km || 0);
+    const kmDiff = maxKm > 0 ? Math.abs((current.mileage_km || 0) - (candidate.mileage_km || 0)) / maxKm : 0;
+    const priceWarn = priceDiff > 0.2 ? ' <span class="muted">(Preis weicht stark ab)</span>' : '';
+    const kmWarn = kmDiff > 0.2 ? ' <span class="muted">(km weicht stark ab)</span>' : '';
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${{esc(candidate.source)}} · ${{esc(candidate.title)}} · ${{fmtEur(candidate.price_eur)}} · ${{statusLabel(getStatus(candidate.id))}}${{priceWarn}}${{kmWarn}}</span><button class="button secondary" onclick="mergeOffers('${{esc(currentId)}}','${{esc(candidate.id)}}')">Mergen</button></div>`;
+  }}).join('');
+  const html = `<div id="merge-picker" class="panel"><h2>Angebot mergen</h2>${{rows}}</div>`;
+  document.getElementById('listings').insertAdjacentHTML('beforeend', html);
+}}
+async function mergeOffers(aId, bId) {{
+  const response = await fetch('/api/merge', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{listing_ids:[aId,bId]}})}});
+  if (response.ok) {{
+    window.location.reload();
+  }} else {{
+    alert(JSON.stringify(await response.json()));
+  }}
+}}
+async function unmergeOffer(id) {{
+  const response = await fetch('/api/unmerge', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{listing_id:id}})}});
+  if (response.ok) {{
+    window.location.reload();
+  }} else {{
+    alert(JSON.stringify(await response.json()));
+  }}
 }}
 function renderOverviewPage() {{
   const grid = document.getElementById('listings');
@@ -676,9 +808,15 @@ function renderOverviewPage() {{
     return true;
   }});
   
-  const sorted = sortListings(filtered);
-  grid.innerHTML = sorted.map(item => renderOverviewCard(item)).join('') || '<p class="muted">Keine Treffer f&uuml;r diese Filter.</p>';
-  document.getElementById('visible-count').textContent = sorted.length + ' von ' + currentListings.length + ' Angeboten';
+  const groups = groupListings(filtered);
+  const primaries = groups.map(g => g.primary);
+  const sortedPrimaries = sortListings(primaries);
+  const groupByPrimaryId = new Map(groups.map(g => [g.primary.id, g]));
+  grid.innerHTML = sortedPrimaries.map(item => {{
+    const group = groupByPrimaryId.get(item.id);
+    return renderOverviewCard(item, group);
+  }}).join('') || '<p class="muted">Keine Treffer f&uuml;r diese Filter.</p>';
+  document.getElementById('visible-count').textContent = sortedPrimaries.length + ' von ' + currentListings.length + ' Angeboten';
 }}
 function currentDetailId() {{
   const match = window.location.pathname.match(new RegExp('^/car/(.+)$'));
