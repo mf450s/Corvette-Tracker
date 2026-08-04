@@ -238,6 +238,44 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             )
             self._send_json(result, status)
             return
+        if path == "/api/merge":
+            try:
+                body = self._read_json_body()
+                listing_ids = body.get("listing_ids")
+                if not isinstance(listing_ids, list) or len(listing_ids) < 2 or not all(isinstance(x, str) and x for x in listing_ids):
+                    raise ValueError("listing_ids: mindestens 2 Angebote erforderlich")
+                result = self.tracker_app.store.merge_listings(listing_ids)
+                self.tracker_app.refresh_exports()
+            except json.JSONDecodeError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            except KeyError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+                return
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(result)
+            return
+        if path == "/api/unmerge":
+            try:
+                body = self._read_json_body()
+                listing_id = body.get("listing_id")
+                if not isinstance(listing_id, str) or not listing_id:
+                    raise ValueError("listing_id erforderlich")
+                updated = self.tracker_app.store.unmerge_listing(listing_id)
+                self.tracker_app.refresh_exports()
+            except json.JSONDecodeError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            except KeyError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+                return
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json({"listing": updated.to_dict()})
+            return
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     def do_PATCH(self) -> None:

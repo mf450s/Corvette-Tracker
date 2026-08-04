@@ -420,3 +420,121 @@ def test_api_filter_no_match_returns_empty(tmp_path):
     finally:
         server.shutdown()
         thread.join(timeout=5)
+
+
+def test_web_api_merge_listings_returns_manual_group_id(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    listing1 = make_listing()
+    listing2 = Listing(
+        id="autoscout24_456",
+        source="AutoScout24",
+        source_listing_id="456",
+        url="https://example.test/listing/456",
+        title="Chevrolet Corvette C6",
+        generation="C6",
+        price_eur=50000,
+        mileage_km=30000,
+        score=75,
+    )
+    store.upsert_listings([listing1, listing2])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = request_json(
+            f"{base_url}/api/merge",
+            method="POST",
+            payload={"listing_ids": ["autoscout24_123", "autoscout24_456"]},
+        )
+        assert status == 200
+        assert payload["group_id"].startswith("manual_")
+        assert payload["listing_ids"] == ["autoscout24_123", "autoscout24_456"]
+        assert len(payload["listings"]) == 2
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_web_api_merge_with_unknown_listing_returns_404(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            request_json(
+                f"{base_url}/api/merge",
+                method="POST",
+                payload={"listing_ids": ["missing-id", "autoscout24_123"]},
+            )
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 404
+        else:
+            raise AssertionError("merge with unknown listing should return 404")
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_web_api_merge_with_single_listing_returns_400(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            request_json(
+                f"{base_url}/api/merge",
+                method="POST",
+                payload={"listing_ids": ["autoscout24_123"]},
+            )
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 400
+        else:
+            raise AssertionError("merge with single listing should return 400")
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_web_api_unmerge_returns_listing_without_cluster(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    listing1 = make_listing()
+    listing2 = Listing(
+        id="autoscout24_456",
+        source="AutoScout24",
+        source_listing_id="456",
+        url="https://example.test/listing/456",
+        title="Chevrolet Corvette C6",
+        generation="C6",
+        price_eur=50000,
+        mileage_km=30000,
+        score=75,
+    )
+    store.upsert_listings([listing1, listing2])
+    store.merge_listings(["autoscout24_123", "autoscout24_456"])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = request_json(
+            f"{base_url}/api/unmerge",
+            method="POST",
+            payload={"listing_id": "autoscout24_123"},
+        )
+        assert status == 200
+        assert payload["listing"]["id"] == "autoscout24_123"
+        assert payload["listing"]["cluster_id"] is None
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
