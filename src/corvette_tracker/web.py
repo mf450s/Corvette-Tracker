@@ -375,6 +375,7 @@ def render_app_shell() -> str:
     .status-dot.offline {{ background:#ef4444; box-shadow:0 0 6px rgba(239,68,68,.5); }}
     .status-dot.unknown {{ background:#6b7280; }}
     .offer-badge {{ display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; background:rgba(239,68,68,.16); color:#f87171; margin-bottom:8px; }}
+    .offer-links {{ margin-top:10px; font-size:13px; }} .offer-links a {{ color:var(--accent); text-decoration:none; margin:0 4px; }} .offer-links a:hover {{ text-decoration:underline; }}
     .meta-line {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }}
     .filter-input {{ min-width:160px; }}
     .ez-range {{ display:flex; gap:6px; align-items:center; }} .ez-range input {{ width:80px; }}
@@ -549,6 +550,7 @@ function renderOverviewCard(item, group) {{
   const offerUrl = item.url || detailUrl;
   const st = getStatus(item.id);
   const extraBadge = group && group.offerCount > 1 ? `<span class="offer-badge">${{group.offerCount}} Angebote · ${{esc(group.sourceSummary)}}</span>` : '';
+  const offerLinks = group && group.offerCount > 1 ? '<p class="offer-links muted">Angebote: ' + group.members.map(m => '<a href="' + esc(m.url) + '" target="_blank" rel="noreferrer">' + esc(m.source) + '</a>').join(' · ') + '</p>' : '';
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}" data-status="${{st}}">
     <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{esc(item.score ?? 0)}}%</span>${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
     <div class="body">
@@ -565,6 +567,7 @@ function renderOverviewCard(item, group) {{
         ${{overviewSpec('EZ', item.first_registration || 'k.A.')}}
       </dl>
       <div class="button-row"><a class="button" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer">Angebot öffnen</a><a class="button secondary" href="${{detailUrl}}" onclick="openDetail(event, '${{esc(item.id)}}')">Details bearbeiten</a></div>
+      ${{offerLinks}}
     </div>
   </article>`;
 }}
@@ -682,7 +685,7 @@ async function renderDetailPage(item) {{
   const groupMembers = item.cluster_id ? currentListings.filter(l => l.cluster_id === item.cluster_id) : [item];
   let groupPanel = '';
   if (groupMembers.length > 1) {{
-    groupPanel = `<section class="panel"><h2>Angebote dieser Gruppe</h2><select id="offer-switch" onchange="switchOffer(this.value)">${{groupMembers.map(member => `<option value="${{esc(member.id)}}" ${{member.id === item.id ? 'selected' : ''}}>${{esc(member.source)}} · ${{fmtEur(member.price_eur)}} · ${{statusLabel(getStatus(member.id))}}</option>`).join('')}}</select></section>`;
+    groupPanel = `<section class="panel"><h2>Angebote dieser Gruppe</h2><select id="offer-switch" onchange="switchOffer(this.value)">${{groupMembers.map(member => `<option value="${{esc(member.id)}}" ${{member.id === item.id ? 'selected' : ''}}>${{esc(member.source)}} · ${{fmtEur(member.price_eur)}} · ${{statusLabel(getStatus(member.id))}}</option>`).join('')}}</select><p class="offer-links muted">${{groupMembers.map(m => '<a href="' + esc(m.url || ('/car/' + m.id)) + '" target="_blank" rel="noreferrer">' + esc(m.source) + ' · ' + fmtEur(m.price_eur) + '</a>').join(' · ')}}</p></section>`;
   }}
   const mergeButtons = [];
   mergeButtons.push(`<button class="button secondary" onclick="toggleMergePicker('${{esc(item.id)}}')">Mit Angebot mergen</button>`);
