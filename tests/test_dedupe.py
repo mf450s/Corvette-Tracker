@@ -372,6 +372,39 @@ def test_assign_clusters_adopts_existing_cluster_id():
     assert clustered[0].cluster_id == "manual_abc123"
 
 
+def test_assign_clusters_adopts_via_title_fallback():
+    existing = make_listing(
+        id="existing",
+        cluster_id="manual_relisted_1",
+        source="kleinanzeigen",
+        source_listing_id="old-id",
+        url="https://existing.test",
+        title="Chevrolet Corvette C6 ZR1",
+        price_eur=95000,
+        mileage_km=65000,
+        location_raw=None,
+        engine=None,
+        first_registration="2009-12",
+    )
+    fresh = make_listing(
+        id="fresh",
+        source="kleinanzeigen",
+        source_listing_id="new-id",
+        url="https://fresh.test",
+        title="Chevrolet Corvette C6 ZR1",
+        price_eur=95000,
+        mileage_km=65000,
+        location_raw="94032 Passau",
+        engine="LS9",
+        first_registration="2009-01",
+        power_hp=647,
+    )
+
+    clustered = assign_clusters([fresh], existing=[existing])
+
+    assert clustered[0].cluster_id == "manual_relisted_1"
+
+
 def test_assign_clusters_keeps_singleton_without_existing_match():
     existing = make_listing(id="existing", cluster_id="manual_abc123",
                             price_eur=120000, mileage_km=30000,
