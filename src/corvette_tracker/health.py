@@ -259,7 +259,7 @@ def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, st
                     continue
 
                 # 2xx from GET: check response body for 'not found' indicators
-                raw_body = response.read(262144)  # 256KB max
+                raw_body = response.read(1048576)  # 1MB max
                 try:
                     charset = response.headers.get_content_charset() or "utf-8"
                     body = raw_body.decode(charset, errors="replace")
@@ -285,9 +285,9 @@ def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, st
                         url,
                     )
                     return 410, "not found body", None
-                if len(raw_body) >= 262144:
+                if len(raw_body) >= 1048576:
                     log.debug(
-                        "Body truncated for %s (>256KB), content check limited",
+                        "Body truncated for %s (>1MB), content check limited",
                         url,
                     )
 
