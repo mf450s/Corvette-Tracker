@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import yaml
 
 from .enums import TrimType
+from .favicon import favicon_data_uri
 from .feed import build_feed_payload, format_eur, format_km, write_exports
 from .health import CACHE_TTL_SECONDS, check_stale_offers, get_cached_status
 from .models import Listing
@@ -357,6 +358,7 @@ def render_app_shell() -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Corvette Tracker WebUI</title>
+  <link rel="icon" type="image/svg+xml" href="{favicon_data_uri()}">
   <style>
     :root {{ color-scheme: dark; --bg:#09090b; --card:#141418; --line:#27272a; --muted:#a1a1aa; --text:#fafafa; --accent:#ef4444; }}
     * {{ box-sizing:border-box; }} body {{ margin:0; font-family:Inter,ui-sans-serif,system-ui,sans-serif; background:var(--bg); color:var(--text); }}
