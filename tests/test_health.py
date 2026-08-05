@@ -745,3 +745,130 @@ def test_web_offers_check_endpoint(tmp_path: Path):
     finally:
         api_server.shutdown()
 
+
+# --- JSON-LD positive signal tests ---
+
+
+def test_positive_jsonld_signal_overrides_notfound_body():
+    class PositiveHandler(BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            self._respond()
+
+        def do_GET(self):
+            self._respond()
+
+        def _respond(self):
+            if self.path != "/listing":
+                self.send_response(404)
+                self.end_headers()
+                return
+            host, port = self.server.server_address[:2]
+            base = f"http://{host}:{port}"
+            body = (
+                '<html><body>'
+                'Dieses Inserat ist nicht mehr verfügbar, aber Sie können:'
+                '<script type="application/ld+json">'
+                f'{{"@type": "Car", "url": "{base}/listing", '
+                '"offers": {"availability": "InStock"}}'
+                '</script>'
+                '</body></html>'
+            )
+            body_bytes = body.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body_bytes)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body_bytes)
+
+        def log_message(self, format, *args):
+            pass
+
+    server, base_url = serve(PositiveHandler)
+    try:
+        status, error = _check_single_url(f"{base_url}/listing")
+        assert status == 200
+        assert error is None
+    finally:
+        server.shutdown()
+
+
+def test_no_positive_signal_stays_offline():
+    body = (
+        "<html><body>"
+        "Dieses Inserat ist nicht mehr verfügbar."
+        "</body></html>"
+    )
+    handler_cls = make_body_handler(responses={"/listing": (200, body)})
+    server, base_url = serve(handler_cls)
+    try:
+        status, error = _check_single_url(f"{base_url}/listing")
+        assert status == 410
+        assert error == "not found body"
+    finally:
+        server.shutdown()
+
+
+def test_show_deleted_veil_wins_over_jsonld():
+    class VeilHandler(BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            self._respond()
+
+        def do_GET(self):
+            self._respond()
+
+        def _respond(self):
+            if self.path != "/listing":
+                self.send_response(404)
+                self.end_headers()
+                return
+            host, port = self.server.server_address[:2]
+            base = f"http://{host}:{port}"
+            body = (
+                '<html><body>'
+                'var config = {showDeletedVeil: true}; '
+                'Dieses Inserat ist nicht mehr verfügbar.'
+                '<script type="application/ld+json">'
+                f'{{"@type": "Car", "url": "{base}/listing", '
+                '"offers": {"availability": "InStock"}}'
+                '</script>'
+                '</body></html>'
+            )
+            body_bytes = body.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body_bytes)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body_bytes)
+
+        def log_message(self, format, *args):
+            pass
+
+    server, base_url = serve(VeilHandler)
+    try:
+        status, error = _check_single_url(f"{base_url}/listing")
+        assert status == 410
+        assert error == "not found body"
+    finally:
+        server.shutdown()
+
+
+def test_positive_signal_wrong_url_ignored():
+    body = (
+        "<html><body>"
+        "Dieses Inserat ist nicht mehr verfügbar."
+        '<script type="application/ld+json">'
+        '{"@type": "Car", "url": "https://other.example/not-this", '
+        '"offers": {"availability": "InStock"}}'
+        '</script>'
+        "</body></html>"
+    )
+    handler_cls = make_body_handler(responses={"/listing": (200, body)})
+    server, base_url = serve(handler_cls)
+    try:
+        status, error = _check_single_url(f"{base_url}/listing")
+        assert status == 410
+        assert error == "not found body"
+    finally:
+        server.shutdown()
