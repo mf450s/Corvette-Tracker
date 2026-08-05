@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -72,6 +73,66 @@ def _is_not_found_body(body: str) -> bool:
     for pattern in NOT_FOUND_PATTERNS:
         if pattern.search(body):
             return True
+    return False
+
+
+def _iter_json_ld_objects(value: Any):
+    """Recursively yield every dict found inside a parsed JSON value."""
+    if isinstance(value, dict):
+        yield value
+        for v in value.values():
+            yield from _iter_json_ld_objects(v)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_json_ld_objects(item)
+
+
+def _has_positive_listing_signal(body: str, url: str) -> bool:
+    """Return True when the page contains JSON-LD confirming this listing is live.
+
+    The structured data must use @type Vehicle/Car/Product, include a ``url``
+    field that matches the checked URL (trailing slash ignored), and have an
+    ``offers.availability`` value containing ``InStock``.
+    """
+    def norm(u: str) -> str:
+        return u.strip().rstrip("/").lower()
+
+    target = norm(url)
+
+    for script_block in re.findall(
+        r"<script[^>]*application/ld\+json[^>]*>(.*?)</script>",
+        body,
+        flags=re.I | re.S,
+    ):
+        try:
+            data = json.loads(script_block)
+        except json.JSONDecodeError:
+            continue
+
+        for obj in _iter_json_ld_objects(data):
+            if not isinstance(obj, dict):
+                continue
+
+            obj_types = obj.get("@type")
+            if not isinstance(obj_types, list):
+                obj_types = [obj_types]
+            if not any(t in {"Vehicle", "Car", "Product"} for t in obj_types):
+                continue
+
+            obj_url = obj.get("url")
+            if not obj_url:
+                continue
+            if norm(str(obj_url)) != target:
+                continue
+
+            offers = obj.get("offers")
+            if isinstance(offers, list):
+                offers = offers[0] if offers else None
+            if isinstance(offers, dict):
+                availability = offers.get("availability")
+                if availability and "InStock" in str(availability):
+                    return True
+
     return False
 
 
@@ -206,11 +267,24 @@ def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, st
                     body = raw_body.decode("utf-8", errors="replace")
 
                 if _is_not_found_body(body):
+                    # Kleinanzeigen's deleted/paused veil markers are strong
+                    # offline signals and must win over any structured data.
+                    if re.search(r"showDeletedVeil\s*:\s*true", body) or re.search(r"showPausedVeil\s*:\s*true", body):
+                        log.info(
+                            "Listing %s returned HTTP 200 with veil/deletion marker — marking offline",
+                            url,
+                        )
+                        return 410, "not found body", None
+                    if _has_positive_listing_signal(body, url):
+                        log.info(
+                            "body has not-found strings but JSON-LD marks it InStock — online",
+                        )
+                        return status, None, url
                     log.info(
                         "Listing %s returned HTTP 200 but body indicates 'not found' — marking offline",
                         url,
                     )
-                    return 410, "not found body", None  # 410 Gone semantics
+                    return 410, "not found body", None
                 if len(raw_body) >= 262144:
                     log.debug(
                         "Body truncated for %s (>256KB), content check limited",
