@@ -731,7 +731,7 @@ function toggleMergePicker(currentId) {{
   const pickerEl = document.getElementById('merge-picker');
   if (pickerEl) pickerEl.scrollIntoView({{behavior: 'smooth', block: 'nearest'}});
 }}
-function mergeOffers(aId, bId) {{
+async function mergeOffers(aId, bId) {{
   const response = await fetch('/api/merge', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{listing_ids:[aId,bId]}})}});
   if (response.ok) {{
     window.location.reload();
