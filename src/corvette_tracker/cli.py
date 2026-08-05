@@ -99,6 +99,9 @@ def run_tracker(
     if not db_path.is_absolute():
         db_path = resolved_output_dir / db_path
 
+    store = TrackerStore(db_path)
+    existing = store.list_active()
+
     warnings: list[str] = []
     if fixture:
         html = Path(fixture).read_text(encoding="utf-8")
@@ -106,7 +109,7 @@ def run_tracker(
     else:
         listings, warnings = collect_live(config)
 
-    listings = assign_clusters(listings)
+    listings = assign_clusters(listings, existing=existing)
     listings = enrich_clusters(listings)
     quality_warnings: list[str] = []
     quality_config = config.get("quality", {})
@@ -128,7 +131,6 @@ def run_tracker(
             warnings.append(f"AI enrichment: {exc}")
     scoring_config = config.get("scoring")
     listings = apply_scores(listings, scoring_config)
-    store = TrackerStore(db_path)
     changed = store.upsert_listings(listings)
     payload = build_feed_payload(
         apply_scores(store.list_active(), scoring_config),
