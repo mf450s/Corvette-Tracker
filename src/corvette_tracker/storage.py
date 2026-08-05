@@ -265,10 +265,12 @@ class TrackerStore:
                     # Preserve hidden status across re-scrapes
                     if previous["hidden"]:
                         listing.hidden = True
-                    # Sticky cluster assignment: keep persisted cluster_id if any
+                    # Sticky manual cluster assignment: only protect user merges (manual_*).
+                    # Automatic cluster ids (soft_*/vin_*/singleton_*) may be re-adopted by
+                    # assign_clusters() on re-listing.
                     prev_payload = json.loads(previous["payload_json"])
                     stored_cluster = prev_payload.get("cluster_id")
-                    if stored_cluster:
+                    if stored_cluster and stored_cluster.startswith("manual_"):
                         listing.cluster_id = stored_cluster
                     if previous["price_eur"] != listing.price_eur:
                         listing.change_type = "price_change"
