@@ -9,6 +9,7 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
+from .favicon import favicon_data_uri
 from .models import Listing
 
 
@@ -295,6 +296,7 @@ def render_html_site(payload: dict[str, Any]) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Corvette Tracker</title>
+  <link rel="icon" type="image/svg+xml" href="{favicon_data_uri()}">
   <style>
     :root {{ color-scheme: dark; --bg:#08090b; --panel:#111318; --card:#151820; --muted:#9aa3b2; --text:#f4f7fb; --line:#2a303b; --accent:#ef4444; --accent2:#f59e0b; }}
     * {{ box-sizing: border-box; }} body {{ margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; background:radial-gradient(circle at top left, rgba(239,68,68,.22), transparent 32rem), linear-gradient(180deg,#0b0d12,var(--bg)); color:var(--text); }}
