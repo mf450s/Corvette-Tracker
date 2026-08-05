@@ -716,7 +716,7 @@ def test_web_offers_check_endpoint(tmp_path: Path):
     api_server, api_base = serve(handler_cls)
     try:
         store = TrackerStore(tmp_path / "tracker.sqlite")
-        store.upsert_listings([make_listing(url=f"{base_url}/check-me")])
+        store.upsert_listings([make_listing(url=f"{api_base}/check-me")])
 
         app = TrackerWebApp(store=store, output_dir=tmp_path)
         web_server = app.make_server("127.0.0.1", 0)
