@@ -176,7 +176,15 @@ def _dedupe_exact_urls(listings: list[Listing]) -> list[Listing]:
     return list(by_url.values())
 
 
-def assign_clusters(listings: list[Listing]) -> list[Listing]:
+def assign_clusters(listings: list[Listing], existing: list[Listing] | None = None) -> list[Listing]:
+    """Assign cluster_id to listings.
+
+    Freshly scraped `listings` are first deduplicated by exact URL and matched
+    by VIN. Then they are soft-matched among themselves. After that, a listing
+    that still has no cluster_id may adopt a cluster_id from `existing` — a
+    read-only pool of previously stored listings. The `existing` objects are
+    never modified.
+    """
     listings = _dedupe_exact_urls(listings)
 
     # VIN hard-match
@@ -205,6 +213,42 @@ def assign_clusters(listings: list[Listing]) -> list[Listing]:
                 cluster_id = f"soft_{key_label}_{key}"
                 for listing in group:
                     listing.cluster_id = cluster_id
+
+    # Re-listing adoption: if a fresh listing still has no cluster, try to
+    # match it against cluster_ids from previously known listings.
+    if existing:
+        pool: dict[str, dict[str, str]] = {}
+        for ex in existing:
+            if not ex.cluster_id:
+                continue
+            keys_ex = dict(_all_soft_keys(ex))
+            for label, key_hash in keys_ex.items():
+                label_pool = pool.setdefault(label, {})
+                if key_hash not in label_pool:
+                    label_pool[key_hash] = ex.cluster_id
+                elif ex.cluster_id.startswith("manual_") and not label_pool[key_hash].startswith("manual_"):
+                    label_pool[key_hash] = ex.cluster_id
+
+            # Title-based fallback key (only used in this adoption pool –
+            # NOT part of _all_soft_keys()).
+            title_key = f"{_slug(ex.title)}|{(ex.price_eur or 0) // 1000}|{(ex.mileage_km or 0) // 5000}"
+            title_pool = pool.setdefault("title", {})
+            if title_key not in title_pool:
+                title_pool[title_key] = ex.cluster_id
+            elif ex.cluster_id.startswith("manual_") and not title_pool[title_key].startswith("manual_"):
+                title_pool[title_key] = ex.cluster_id
+
+        for listing in listings:
+            if listing.cluster_id:
+                continue
+            keys_new = dict(_all_soft_keys(listing))
+            keys_new["title"] = f"{_slug(listing.title)}|{(listing.price_eur or 0) // 1000}|{(listing.mileage_km or 0) // 5000}"
+            for label in ("full", "no_trim", "no_loc", "no_eng", "legacy", "title"):
+                if label not in pool:
+                    continue
+                if keys_new[label] in pool[label]:
+                    listing.cluster_id = pool[label][keys_new[label]]
+                    break
 
     # Remaining singles get a unique cluster_id from their full key
     for listing in listings:
