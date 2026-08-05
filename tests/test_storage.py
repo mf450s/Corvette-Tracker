@@ -426,6 +426,23 @@ def test_sticky_cluster_id_survives_upsert(tmp_path: Path):
     assert listing.cluster_id == "manual_abc123"
 
 
+def test_automatic_cluster_id_can_be_readopted(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+
+    first = make_listing(id="readopt-car", price=40000)
+    first.cluster_id = "soft_old_abc"
+    store.upsert_listings([first])
+
+    # Simulate re-listing adoption: automatic cluster changes on re-scrape
+    second = make_listing(id="readopt-car", price=40000)
+    second.cluster_id = "soft_new_xyz"
+    store.upsert_listings([second])
+
+    listing = store.get_listing("readopt-car")
+    assert listing is not None
+    assert listing.cluster_id == "soft_new_xyz"
+
+
 def test_merge_listings_assigns_manual_cluster_id(tmp_path: Path):
     store = TrackerStore(tmp_path / "tracker.sqlite")
     a = make_listing(id="merge-a", price=50000)
