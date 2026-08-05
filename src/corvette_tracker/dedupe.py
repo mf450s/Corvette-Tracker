@@ -229,11 +229,21 @@ def assign_clusters(listings: list[Listing], existing: list[Listing] | None = No
                 elif ex.cluster_id.startswith("manual_") and not label_pool[key_hash].startswith("manual_"):
                     label_pool[key_hash] = ex.cluster_id
 
+            # Title-based fallback key (only used in this adoption pool –
+            # NOT part of _all_soft_keys()).
+            title_key = f"{_slug(ex.title)}|{(ex.price_eur or 0) // 1000}|{(ex.mileage_km or 0) // 5000}"
+            title_pool = pool.setdefault("title", {})
+            if title_key not in title_pool:
+                title_pool[title_key] = ex.cluster_id
+            elif ex.cluster_id.startswith("manual_") and not title_pool[title_key].startswith("manual_"):
+                title_pool[title_key] = ex.cluster_id
+
         for listing in listings:
             if listing.cluster_id:
                 continue
             keys_new = dict(_all_soft_keys(listing))
-            for label in ("full", "no_trim", "no_loc", "no_eng", "legacy"):
+            keys_new["title"] = f"{_slug(listing.title)}|{(listing.price_eur or 0) // 1000}|{(listing.mileage_km or 0) // 5000}"
+            for label in ("full", "no_trim", "no_loc", "no_eng", "legacy", "title"):
                 if label not in pool:
                     continue
                 if keys_new[label] in pool[label]:
