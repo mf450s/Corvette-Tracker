@@ -724,7 +724,11 @@ function toggleMergePicker(currentId) {{
     return `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${{esc(candidate.source)}} · ${{esc(candidate.title)}} · ${{fmtEur(candidate.price_eur)}} · ${{statusLabel(getStatus(candidate.id))}}${{priceWarn}}${{kmWarn}}</span><button class="button secondary" onclick="mergeOffers('${{esc(currentId)}}','${{esc(candidate.id)}}')">Mergen</button></div>`;
   }}).join('');
   const html = `<div id="merge-picker" class="panel"><h2>Angebot mergen</h2>${{rows}}</div>`;
-  document.getElementById('listings').insertAdjacentHTML('beforeend', html);
+  const detailCard = document.querySelector('.detail-card');
+  const insertTarget = detailCard || document.getElementById('listings');
+  insertTarget.insertAdjacentHTML('afterend', html);
+  const pickerEl = document.getElementById('merge-picker');
+  if (pickerEl) pickerEl.scrollIntoView({{behavior: 'smooth', block: 'nearest'}});
 }}
 async function mergeOffers(aId, bId) {{
   const response = await fetch('/api/merge', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{listing_ids:[aId,bId]}})}});
