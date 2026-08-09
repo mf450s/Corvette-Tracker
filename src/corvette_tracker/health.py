@@ -37,7 +37,7 @@ NOT_FOUND_PATTERNS: list[re.Pattern] = [
     re.compile(r"404\s+not\s+found", re.I),
     re.compile(r"dieses\s+objekt\s+wurde\s+entfernt", re.I),
     re.compile(r"this\s+(?:ad|listing)\s+(?:has\s+been\s+)?removed", re.I),
-    re.compile(r"gelöscht", re.I),
+    re.compile(r"(?:anzeige|inserat|objekt|ad|listing)\s+(?:wurde|ist|wird)\s+gelöscht", re.I),
     re.compile(r"showDeletedVeil\s*:\s*true", re.I),
     re.compile(r"showPausedVeil\s*:\s*true", re.I),
 ]
@@ -134,6 +134,18 @@ def _has_positive_listing_signal(body: str, url: str) -> bool:
                     return True
 
     return False
+
+
+def _has_kleinanzeigen_live_veil(body: str) -> bool:
+    """Return True when the page contains both Kleinanzeigen live markers.
+
+    Kleinanzeigen detail pages embed `showDeletedVeil: false` and
+    `showPausedVeil: false` when the listing is still available.
+    """
+    return bool(
+        re.search(r"showDeletedVeil\s*:\s*false", body, re.I)
+        and re.search(r"showPausedVeil\s*:\s*false", body, re.I)
+    )
 
 
 # Per-domain rate limiting state
@@ -275,9 +287,9 @@ def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, st
                             url,
                         )
                         return 410, "not found body", None
-                    if _has_positive_listing_signal(body, url):
+                    if _has_positive_listing_signal(body, url) or _has_kleinanzeigen_live_veil(body):
                         log.info(
-                            "body has not-found strings but JSON-LD marks it InStock — online",
+                            "body has not-found strings but JSON-LD/veil markers indicate live listing — online",
                         )
                         return status, None, url
                     log.info(
