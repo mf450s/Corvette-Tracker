@@ -809,6 +809,40 @@ def test_no_positive_signal_stays_offline():
         server.shutdown()
 
 
+def test_kleinanzeigen_live_veil_overrides_generic_geloescht():
+    body = (
+        "<html><body>"
+        "unverschämte Anfragen werden direkt gelöscht und blockiert "
+        "showDeletedVeil: false showPausedVeil: false"
+        "</body></html>"
+    )
+    handler_cls = make_body_handler(responses={"/listing": (200, body)})
+    server, base_url = serve(handler_cls)
+    try:
+        status, error = _check_single_url(f"{base_url}/listing")
+        assert status == 200
+        assert error is None
+    finally:
+        server.shutdown()
+
+
+def test_kleinanzeigen_context_geloescht_without_veil_still_offline():
+    body = (
+        "<html><body>"
+        "unverschämte Anfragen werden direkt gelöscht und blockiert. "
+        "Anzeige wurde gelöscht."
+        "</body></html>"
+    )
+    handler_cls = make_body_handler(responses={"/listing": (200, body)})
+    server, base_url = serve(handler_cls)
+    try:
+        status, error = _check_single_url(f"{base_url}/listing")
+        assert status == 410
+        assert error == "not found body"
+    finally:
+        server.shutdown()
+
+
 def test_show_deleted_veil_wins_over_jsonld():
     class VeilHandler(BaseHTTPRequestHandler):
         def do_HEAD(self):
