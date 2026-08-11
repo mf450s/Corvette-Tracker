@@ -384,6 +384,8 @@ def render_app_shell() -> str:
     .list-toolbar {{ display:flex; justify-content:initial; align-items:start; gap:12px; flex-wrap:wrap; }}
     .list-toolbar-head {{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; }}
     .list-toolbar-head h2 {{ margin:0; }}
+    .list-toolbar-actions {{ display:flex; align-items:center; gap:12px; }}
+    .list-toolbar-actions .button {{ padding:8px 12px; font-size:13px; }}
     .filter-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px 14px; margin-top:14px; align-items:end; }}
     .filter-field {{ display:grid; gap:6px; font-size:12px; color:var(--muted); }}
     .filter-field select,.filter-field input {{ width:100%; min-width:0; }}
@@ -397,7 +399,7 @@ def render_app_shell() -> str:
     .score-field b {{ color:var(--accent); }}
     .filter-check {{ display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--text); padding:10px 0; }}
     .filter-check input[type=checkbox] {{ width:18px; height:18px; accent-color:var(--accent); }}
-    .visible-count {{ font-weight:700; font-size:15px; margin-top:10px; color:var(--text); }}
+    .visible-count {{ font-weight:700; font-size:15px; color:var(--text); }}
     .history-table {{ width:100%; border-collapse:collapse; margin-top:12px; }}
     .history-table th,.history-table td {{ text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top; }}
     .history-table th {{ color:var(--muted); font-weight:600; font-size:12px; }}
@@ -429,7 +431,7 @@ def render_app_shell() -> str:
     <p class="crawl-meta">Letzter Crawl: <strong id="last-crawl">noch nie</strong></p>
   </header>
   <main class="wrap"><section class="panel list-toolbar" id="filter-bar">
-  <div class="list-toolbar-head"><h2>Listings</h2><p class="visible-count" id="visible-count">Alle Angebote</p></div>
+  <div class="list-toolbar-head"><h2>Listings</h2><div class="list-toolbar-actions"><p class="visible-count" id="visible-count">Alle Angebote</p><button id="reset-filters" class="button secondary" type="button">Filter zurücksetzen</button></div></div>
   <div class="filter-grid">
     <label class="filter-field search-field">Suche<input id="text-search" class="filter-input" type="text" placeholder="Titel, Beschreibung&hellip;"></label>
     <label class="filter-field">Status<select id="status-filter"><option value="all">Alle</option><option value="online">Online</option><option value="offline">Offline</option></select></label>
@@ -445,7 +447,6 @@ def render_app_shell() -> str:
     <label class="filter-field">Änderung<select id="change-filter"><option value="all">Alle</option><option value="new">Neu</option><option value="price_change">Preis geändert</option><option value="metadata_change">Metadaten geändert</option><option value="unchanged">Unverändert</option></select></label>
     <label class="filter-field score-field"><span>Score &ge; <b id="score-value">0</b></span><input id="score-min" class="score-slider" type="range" min="0" max="100" value="0"></label>
     <label class="filter-check"><input id="hide-risk" type="checkbox">Riskante ausblenden</label>
-    <button id="reset-filters" class="button secondary" type="button">Filter zurücksetzen</button>
   </div>
 </section><div id="listings" class="grid"></div></main>
 <script data-field-registry="{field_registry_attr}">
