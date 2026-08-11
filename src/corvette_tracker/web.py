@@ -889,6 +889,26 @@ async function reScrapeOffer(id) {{
   }}
   await loadListings();
 }}
+function resetFilters() {{
+    ['text-search','ez-from','ez-to','price-min','price-max','km-min','km-max'].forEach(id => {{
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    }});
+    ['status-filter','source-filter','transmission-filter','trim-filter','engine-filter','body-filter','listing-sort','change-filter'].forEach(id => {{
+        const el = document.getElementById(id);
+        if (el) el.value = 'all';
+    }});
+    const scoreSlider = document.getElementById('score-min');
+    if (scoreSlider) {{
+        scoreSlider.value = '0';
+        const scoreValue = document.getElementById('score-value');
+        if (scoreValue) scoreValue.textContent = '0';
+    }}
+    const hideRisk = document.getElementById('hide-risk');
+    if (hideRisk) hideRisk.checked = false;
+    renderListings();
+}}
+document.getElementById('reset-filters').addEventListener('click', resetFilters);
 document.getElementById('listing-sort').addEventListener('change', renderListings);
 document.getElementById('status-filter').addEventListener('change', renderListings);
 document.getElementById('text-search').addEventListener('input', renderListings);
