@@ -381,14 +381,25 @@ def render_app_shell() -> str:
     .meta-line {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }}
     .filter-input {{ min-width:160px; }}
     .ez-range {{ display:flex; gap:6px; align-items:center; }} .ez-range input {{ width:80px; }}
-    .filter-row {{ display:flex; gap:12px; flex-wrap:wrap; align-items:end; margin-top:8px; padding-top:10px; border-top:1px solid var(--line); }}
-    .filter-row label {{ display:grid; gap:4px; font-size:12px; color:var(--muted); }}
-    .filter-row label select,.filter-row label input {{ min-width:110px; }}
-    .range-pair {{ display:flex; gap:4px; align-items:center; }} .range-pair input {{ width:90px; }}
-    .score-slider {{ width:140px; vertical-align:middle; }}
-    .toggle-label {{ display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; }}
-    .toggle-label input[type=checkbox] {{ width:18px; height:18px; accent-color:var(--accent); }}
-    .visible-count {{ font-weight:700; font-size:15px; margin-top:10px; color:var(--text); }}
+    .list-toolbar {{ display:flex; justify-content:initial; align-items:start; gap:12px; flex-wrap:wrap; }}
+    .list-toolbar-head {{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; }}
+    .list-toolbar-head h2 {{ margin:0; }}
+    .list-toolbar-actions {{ display:flex; align-items:center; gap:12px; }}
+    .list-toolbar-actions .button {{ padding:8px 12px; font-size:13px; }}
+    .filter-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px 14px; margin-top:14px; align-items:end; }}
+    .filter-field {{ display:grid; gap:6px; font-size:12px; color:var(--muted); }}
+    .filter-field select,.filter-field input {{ width:100%; min-width:0; }}
+    .search-field {{ grid-column:span 2; }}
+    .range-pair {{ display:flex; gap:4px; align-items:center; }}
+    .range-pair input {{ flex:1; min-width:0; width:auto; }}
+    .range-sep {{ color:var(--muted); flex-shrink:0; }}
+    .range-unit {{ color:var(--muted); flex-shrink:0; font-size:12px; }}
+    .score-field {{ }}
+    .score-slider {{ width:100%; }}
+    .score-field b {{ color:var(--accent); }}
+    .filter-check {{ display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--text); padding:10px 0; }}
+    .filter-check input[type=checkbox] {{ width:18px; height:18px; accent-color:var(--accent); }}
+    .visible-count {{ font-weight:700; font-size:15px; color:var(--text); }}
     .history-table {{ width:100%; border-collapse:collapse; margin-top:12px; }}
     .history-table th,.history-table td {{ text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top; }}
     .history-table th {{ color:var(--muted); font-weight:600; font-size:12px; }}
@@ -419,9 +430,25 @@ def render_app_shell() -> str:
     <div class="toolbar"><button id="run">Jetzt crawlen</button><span id="status" class="status muted"></span></div>
     <p class="crawl-meta">Letzter Crawl: <strong id="last-crawl">noch nie</strong></p>
   </header>
-  <main class="wrap"><section class="panel list-toolbar" id="filter-bar"><div><h2>Listings</h2></div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label class="muted">Suche<input id="text-search" class="filter-input" type="text" placeholder="Titel, Beschreibung&hellip;"></label><label class="muted">Status<select id="status-filter"><option value="all">Alle</option><option value="online">Online</option><option value="offline">Offline</option></select></label><label class="muted">Quelle<select id="source-filter"><option value="all">Alle</option><option value="AutoScout24">AutoScout24</option><option value="AutoUncle">AutoUncle</option><option value="Kleinanzeigen">Kleinanzeigen</option></select></label><label class="muted">Getriebe<select id="transmission-filter"><option value="all">Alle</option><option value="manual">Schalter</option><option value="automatic">Automatik</option></select></label><label class="muted">Trim<select id="trim-filter"><option value="all">Alle</option><option value="Base">Base</option><option value="Grand Sport">Grand Sport</option><option value="Z06">Z06</option><option value="ZR1">ZR1</option></select></label><label class="muted">Motor<select id="engine-filter"><option value="all">Alle</option><option value="LS2">LS2</option><option value="LS3">LS3</option><option value="LS7">LS7</option><option value="LS9">LS9</option></select></label><label class="muted">Karosserie<select id="body-filter"><option value="all">Alle</option><option value="Cabrio">Cabrio</option><option value="Coupé">Coupé</option><option value="Targa">Targa</option></select></label></div>
-<div class="filter-row"><label>Preis<span id="price-min-input"><input id="price-min" type="number" placeholder="von" min="0" step="1000"></span><span>&ndash;</span><span><input id="price-max" type="number" placeholder="bis" min="0" step="1000"></span>€</label><label>km<span><input id="km-min" type="number" placeholder="von" min="0" step="1000"></span><span>&ndash;</span><span><input id="km-max" type="number" placeholder="bis" min="0" step="1000"></span>km</label><label>Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="status-online">Online zuerst</option><option value="status-offline">Offline zuerst</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option><option value="mileage-desc">km hoch</option><option value="ez-asc">EZ alt&rarr;neu</option><option value="ez-desc">EZ neu&rarr;alt</option><option value="created-desc">Neu hinzugefügt</option><option value="created-asc">Älteste zuerst</option><option value="source">Quelle</option></select></label><label>EZ von<input id="ez-from" type="text" placeholder="z.B. 2008" maxlength="4"></label><label>bis<input id="ez-to" type="text" placeholder="z.B. 2013" maxlength="4"></label><label>Änderung<select id="change-filter"><option value="all">Alle</option><option value="new">Neu</option><option value="price_change">Preis geändert</option><option value="metadata_change">Metadaten geändert</option><option value="unchanged">Unverändert</option></select></label><label>Score &ge;<input id="score-min" class="score-slider" type="range" min="0" max="100" value="0"><span id="score-value">0</span></label><label class="toggle-label"><input id="hide-risk" type="checkbox">Riskante ausblenden</label></div>
-<p class="visible-count" id="visible-count">Alle Angebote</p></section><div id="listings" class="grid"></div></main>
+  <main class="wrap"><section class="panel list-toolbar" id="filter-bar">
+  <div class="list-toolbar-head"><h2>Listings</h2><div class="list-toolbar-actions"><p class="visible-count" id="visible-count">Alle Angebote</p><button id="reset-filters" class="button secondary" type="button">Filter zurücksetzen</button></div></div>
+  <div class="filter-grid">
+    <label class="filter-field search-field">Suche<input id="text-search" class="filter-input" type="text" placeholder="Titel, Beschreibung&hellip;"></label>
+    <label class="filter-field">Status<select id="status-filter"><option value="all">Alle</option><option value="online">Online</option><option value="offline">Offline</option></select></label>
+    <label class="filter-field">Quelle<select id="source-filter"><option value="all">Alle</option><option value="AutoScout24">AutoScout24</option><option value="AutoUncle">AutoUncle</option><option value="Kleinanzeigen">Kleinanzeigen</option></select></label>
+    <label class="filter-field">Getriebe<select id="transmission-filter"><option value="all">Alle</option><option value="manual">Schalter</option><option value="automatic">Automatik</option></select></label>
+    <label class="filter-field">Trim<select id="trim-filter"><option value="all">Alle</option><option value="Base">Base</option><option value="Grand Sport">Grand Sport</option><option value="Z06">Z06</option><option value="ZR1">ZR1</option></select></label>
+    <label class="filter-field">Motor<select id="engine-filter"><option value="all">Alle</option><option value="LS2">LS2</option><option value="LS3">LS3</option><option value="LS7">LS7</option><option value="LS9">LS9</option></select></label>
+    <label class="filter-field">Karosserie<select id="body-filter"><option value="all">Alle</option><option value="Cabrio">Cabrio</option><option value="Coupé">Coupé</option><option value="Targa">Targa</option></select></label>
+    <div class="filter-field"><span>Preis</span><div class="range-pair"><input id="price-min" type="number" placeholder="von" min="0" step="1000"><span class="range-sep">&ndash;</span><input id="price-max" type="number" placeholder="bis" min="0" step="1000"><span class="range-unit">€</span></div></div>
+    <div class="filter-field"><span>km</span><div class="range-pair"><input id="km-min" type="number" placeholder="von" min="0" step="1000"><span class="range-sep">&ndash;</span><input id="km-max" type="number" placeholder="bis" min="0" step="1000"><span class="range-unit">km</span></div></div>
+    <div class="filter-field"><span>EZ (Jahr)</span><div class="range-pair"><input id="ez-from" type="text" placeholder="von" maxlength="4"><span class="range-sep">&ndash;</span><input id="ez-to" type="text" placeholder="bis" maxlength="4"></div></div>
+    <label class="filter-field">Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="status-online">Online zuerst</option><option value="status-offline">Offline zuerst</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option><option value="mileage-desc">km hoch</option><option value="ez-asc">EZ alt&rarr;neu</option><option value="ez-desc">EZ neu&rarr;alt</option><option value="created-desc">Neu hinzugefügt</option><option value="created-asc">Älteste zuerst</option><option value="source">Quelle</option></select></label>
+    <label class="filter-field">Änderung<select id="change-filter"><option value="all">Alle</option><option value="new">Neu</option><option value="price_change">Preis geändert</option><option value="metadata_change">Metadaten geändert</option><option value="unchanged">Unverändert</option></select></label>
+    <label class="filter-field score-field"><span>Score &ge; <b id="score-value">0</b></span><input id="score-min" class="score-slider" type="range" min="0" max="100" value="0"></label>
+    <label class="filter-check"><input id="hide-risk" type="checkbox">Riskante ausblenden</label>
+  </div>
+</section><div id="listings" class="grid"></div></main>
 <script data-field-registry="{field_registry_attr}">
 const fieldRegistry = {field_registry_js};
 let currentListings = [];
@@ -889,6 +916,26 @@ async function reScrapeOffer(id) {{
   }}
   await loadListings();
 }}
+function resetFilters() {{
+    ['text-search','ez-from','ez-to','price-min','price-max','km-min','km-max'].forEach(id => {{
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    }});
+    ['status-filter','source-filter','transmission-filter','trim-filter','engine-filter','body-filter','listing-sort','change-filter'].forEach(id => {{
+        const el = document.getElementById(id);
+        if (el) el.value = 'all';
+    }});
+    const scoreSlider = document.getElementById('score-min');
+    if (scoreSlider) {{
+        scoreSlider.value = '0';
+        const scoreValue = document.getElementById('score-value');
+        if (scoreValue) scoreValue.textContent = '0';
+    }}
+    const hideRisk = document.getElementById('hide-risk');
+    if (hideRisk) hideRisk.checked = false;
+    renderListings();
+}}
+document.getElementById('reset-filters').addEventListener('click', resetFilters);
 document.getElementById('listing-sort').addEventListener('change', renderListings);
 document.getElementById('status-filter').addEventListener('change', renderListings);
 document.getElementById('text-search').addEventListener('input', renderListings);
