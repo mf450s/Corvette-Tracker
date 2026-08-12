@@ -460,10 +460,10 @@ def render_app_shell() -> str:
     .list-toolbar-actions {{ display:flex; align-items:center; gap:12px; }}
     .list-toolbar-actions .button {{ padding:8px 12px; font-size:13px; }}
     .filter-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px 14px; margin-top:14px; align-items:end; }}
-    .filter-field {{ display:grid; gap:6px; font-size:12px; color:var(--muted); }}
+    .filter-field {{ display:grid; gap:6px; font-size:12px; color:var(--muted); min-width:0; }}
     .filter-field select,.filter-field input {{ width:100%; min-width:0; }}
     .search-field {{ grid-column:span 2; }}
-    .range-pair {{ display:flex; gap:4px; align-items:center; }}
+    .range-pair {{ display:flex; gap:4px; align-items:center; min-width:0; }}
     .range-pair input {{ flex:1; min-width:0; width:auto; }}
     .range-sep {{ color:var(--muted); flex-shrink:0; }}
     .range-unit {{ color:var(--muted); flex-shrink:0; font-size:12px; }}
