@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .enums import TrimType
+from .enums import BodyStyleType, TransmissionType, TrimType
 
 
 @dataclass(slots=True)
@@ -28,8 +28,8 @@ class Listing:
     trim: TrimType | None = None
     first_registration: str | None = None
     tuv_until: str | None = None
-    transmission: str | None = None
-    body_style: str | None = None
+    transmission: TransmissionType | None = None
+    body_style: BodyStyleType | None = None
     exterior_color: str | None = None
     interior_color: str | None = None
     eu_spec: bool | None = None
@@ -50,6 +50,21 @@ class Listing:
     risk_flags: list[str] = field(default_factory=list)
     inference_notes: list[str] = field(default_factory=list)
     conflict_flags: list[str] = field(default_factory=list)
+    model_year: int | None = None
+    power_kw: int | None = None
+    displacement_cc: int | None = None
+    drivetrain: str | None = None
+    condition: str | None = None
+    owners_count: int | None = None
+    service_history: bool | None = None
+    warranty: bool | None = None
+    magnetic_ride: bool | None = None
+    active_exhaust: bool | None = None
+    head_up_display: bool | None = None
+    navigation: bool | None = None
+    bose_audio: bool | None = None
+    leather_interior: bool | None = None
+    heated_seats: bool | None = None
     score: int = 0
     change_type: str = "new"
     previous_price_eur: int | None = None

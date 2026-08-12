@@ -30,6 +30,23 @@ class TrimType(StrEnum):
     SPECIAL_EDITION = "Special Edition"
 
 
+class TransmissionType(StrEnum):
+    """Transmission options for the C6 Corvette."""
+
+    MANUAL = "manual"
+    AUTOMATIC = "automatic"
+    UNKNOWN = "unknown"
+
+
+class BodyStyleType(StrEnum):
+    """Body styles for the C6 Corvette (German strings for DB compatibility)."""
+
+    CABRIO = "Cabrio"
+    COUPE = "Coupé"
+    TARGA = "Targa"
+    UNKNOWN = "unknown"
+
+
 class SourceType(StrEnum):
     """Supported marketplace source identifiers."""
 

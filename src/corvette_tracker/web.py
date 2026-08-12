@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 import threading
 import time
 from dataclasses import fields
@@ -296,6 +297,18 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         listing_id = unquote(path[len(prefix) :])
         try:
             updates = self._read_json_body()
+            for date_field in ("first_registration", "tuv_until"):
+                if date_field in updates and updates[date_field] not in (None, ""):
+                    val = str(updates[date_field])
+                    if not re.fullmatch(r"\d{4}-\d{2}", val):
+                        raise ValueError(f"{date_field} muss das Format JJJJ-MM haben (z.B. 2008-06)")
+            if "model_year" in updates and updates["model_year"] not in (None, ""):
+                try:
+                    my = int(updates["model_year"])
+                except (TypeError, ValueError):
+                    raise ValueError("model_year muss eine Zahl sein")
+                if not 2004 <= my <= 2014:
+                    raise ValueError("model_year muss zwischen 2004 und 2014 liegen")
             updated = self.tracker_app.store.update_overrides(listing_id, updates)
             self.tracker_app.refresh_exports()
         except KeyError:
@@ -335,18 +348,50 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
 
 
 def render_app_shell() -> str:
-    numeric_fields = {"price_eur", "mileage_km", "power_hp", "estimated_power_hp", "engine_confidence", "origin_confidence", "score", "previous_price_eur"}
-    boolean_fields = {"eu_spec", "has_damage"}
+    numeric_fields = {"price_eur", "mileage_km", "power_hp", "estimated_power_hp", "engine_confidence", "origin_confidence", "score", "previous_price_eur", "model_year", "power_kw", "displacement_cc", "owners_count"}
+    boolean_fields = {"eu_spec", "has_damage", "service_history", "warranty", "magnetic_ride", "active_exhaust", "head_up_display", "navigation", "bose_audio", "leather_interior", "heated_seats"}
     list_fields = {"equipment", "visual_flags", "image_urls", "risk_flags", "inference_notes", "conflict_flags"}
     dict_fields = {"ai_enrichment"}
     trim_options = [trim.value for trim in TrimType]
+    FIELD_LABELS = {
+        "id": "ID", "source": "Quelle", "source_listing_id": "Quellen-ID", "url": "URL",
+        "title": "Titel", "generation": "Generation", "model": "Modell",
+        "price_eur": "Preis (€)", "price_label": "Preis-Label", "mileage_km": "Kilometerstand",
+        "engine": "Motor", "probable_engine": "Motor (geschätzt)", "engine_confidence": "Motor-Konfidenz",
+        "engine_note": "Motor-Notiz", "power_hp": "Leistung (PS)", "estimated_power_hp": "Leistung (geschätzt)",
+        "power_note": "Leistungs-Notiz", "trim": "Ausstattung",
+        "model_year": "Modelljahr", "power_kw": "Leistung (kW)", "displacement_cc": "Hubraum (ccm)",
+        "drivetrain": "Antrieb", "condition": "Zustand", "owners_count": "Vorbesitzer",
+        "service_history": "Scheckheft gepflegt", "warranty": "Garantie",
+        "magnetic_ride": "Magnetic Ride (F55)", "active_exhaust": "Klappenauspuff (NPP)",
+        "head_up_display": "Head-Up-Display", "navigation": "Navigation", "bose_audio": "Bose-Sound",
+        "leather_interior": "Lederausstattung", "heated_seats": "Sitzheizung",
+        "first_registration": "Erstzulassung", "tuv_until": "TÜV bis",
+        "transmission": "Getriebe", "body_style": "Karosserie",
+        "exterior_color": "Außenfarbe", "interior_color": "Innenfarbe", "eu_spec": "EU-Spezifikation",
+        "equipment": "Ausstattung", "visual_flags": "Visuelle Merkmale", "ai_enrichment": "KI-Anreicherung",
+        "accident_status": "Unfallstatus", "damage": "Schaden", "has_damage": "Unfallschaden",
+        "location_raw": "Standort", "location_country": "Standortland", "origin_country": "Herkunftsland",
+        "origin_confidence": "Herkunfts-Konfidenz", "seller_type": "Verkäufer", "vin": "Fahrgestellnummer (VIN)",
+        "image_urls": "Bilder", "description_text": "Beschreibung",
+        "risk_flags": "Risiko-Flags", "inference_notes": "Inferenz-Notizen", "conflict_flags": "Konflikt-Flags",
+        "score": "Score", "change_type": "Änderungstyp", "previous_price_eur": "Vorheriger Preis",
+        "cluster_id": "Cluster", "validation_flags": "Validierungs-Flags", "hidden": "Ausgeblendet",
+    }
+    month_fields = {"first_registration", "tuv_until"}
+    enum_options = {
+        "transmission": [("manual", "Schalter"), ("automatic", "Automatik"), ("unknown", "Unbekannt")],
+        "body_style": [("Cabrio", "Cabrio"), ("Coupé", "Coupé"), ("Targa", "Targa"), ("unknown", "Unbekannt")],
+    }
     field_registry = [
         {
             "name": field.name,
+            "label": FIELD_LABELS.get(field.name, field.name),
             "editable": field.name in EDITABLE_FIELDS,
             "protected": field.name in PROTECTED_OVERRIDE_FIELDS,
-            "kind": "select" if field.name == "trim" else "number" if field.name in numeric_fields else "boolean" if field.name in boolean_fields else "list" if field.name in list_fields else "json" if field.name in dict_fields else "text",
-            "options": trim_options if field.name == "trim" else None,
+            "kind": "month" if field.name in month_fields else "select" if field.name == "trim" or field.name in enum_options else "number" if field.name in numeric_fields else "boolean" if field.name in boolean_fields else "list" if field.name in list_fields else "json" if field.name in dict_fields else "text",
+            "options": trim_options if field.name == "trim" else [o for o, _ in enum_options[field.name]] if field.name in enum_options else None,
+            "option_labels": [l for _, l in enum_options[field.name]] if field.name in enum_options else None,
         }
         for field in fields(Listing)
     ]
@@ -474,12 +519,14 @@ function displayValue(value) {{
 }}
 function editorValue(value, kind) {{
   if (value == null) return '';
+  if (kind === 'month') return String(value ?? '');
   if (kind === 'json') return JSON.stringify(value, null, 2);
   if (Array.isArray(value)) return value.join(', ');
   return String(value);
 }}
 function parseEditorValue(raw, kind) {{
   if (raw === '') return null;
+  if (kind === 'month') return raw || null;
   if (kind === 'number') return Number(raw);
   if (kind === 'boolean') return raw === 'true' ? true : raw === 'false' ? false : null;
   if (kind === 'select') return raw;
@@ -602,19 +649,28 @@ function renderOverviewCard(item, group) {{
 }}
 function inlineEditorValue(field, item) {{
   const value = item[field.name];
-  if (!field.editable) return `<div class="field-editor readonly-field"><span>${{esc(field.name)}}</span><strong>${{esc(displayValue(value))}}</strong></div>`;
+  const fieldLabel = field.label || field.name;
+  if (!field.editable) return `<div class="field-editor readonly-field"><span>${{esc(fieldLabel)}}</span><strong>${{esc(displayValue(value))}}</strong></div>`;
   if (field.kind === 'boolean') {{
-    return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.name)}}</label><select data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}"><option value="" ${{value == null ? 'selected' : ''}}>k.A.</option><option value="true" ${{value === true ? 'selected' : ''}}>ja</option><option value="false" ${{value === false ? 'selected' : ''}}>nein</option></select></div>`;
+    return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(fieldLabel)}}</label><select data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}"><option value="" ${{value == null ? 'selected' : ''}}>k.A.</option><option value="true" ${{value === true ? 'selected' : ''}}>ja</option><option value="false" ${{value === false ? 'selected' : ''}}>nein</option></select></div>`;
   }}
   if (field.kind === 'select' && Array.isArray(field.options)) {{
-    const options = field.options.map(option => `<option value="${{esc(option)}}" ${{value === option ? 'selected' : ''}}>${{esc(option)}}</option>`).join('');
-    return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.name)}}</label><select data-field-name="${{esc(field.name)}}" data-field-kind="select"><option value="" ${{value == null || value === '' ? 'selected' : ''}}>k.A.</option>${{options}}</select></div>`;
+    const optionLabels = field.option_labels || field.options;
+    const options = field.options.map((option, i) => `<option value="${{esc(option)}}" ${{value === option ? 'selected' : ''}}>${{esc(optionLabels[i] || option)}}</option>`).join('');
+    return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(fieldLabel)}}</label><select data-field-name="${{esc(field.name)}}" data-field-kind="select"><option value="" ${{value == null || value === '' ? 'selected' : ''}}>k.A.</option>${{options}}</select></div>`;
   }}
   const tag = field.kind === 'json' || field.kind === 'list' || field.name === 'description_text' ? 'textarea' : 'input';
-  const input = tag === 'textarea'
-    ? `<textarea data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}">${{esc(editorValue(value, field.kind))}}</textarea>`
-    : `<input data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}" type="${{field.kind === 'number' ? 'number' : 'text'}}" value="${{esc(editorValue(value, field.kind))}}">`;
-  return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.name)}}</label>${{input}}</div>`;
+  let input = '';
+  if (field.kind === 'month') {{
+    input = `<input data-field-name="${{esc(field.name)}}" data-field-kind="month" type="month" value="${{esc(editorValue(value, field.kind))}}">`;
+  }} else if (tag === 'textarea') {{
+    input = `<textarea data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}">${{esc(editorValue(value, field.kind))}}</textarea>`;
+  }} else {{
+    const extraAttrs = field.kind === 'number' ? (field.name === 'model_year' ? ' min="2004" max="2014"' : (field.name === 'price_eur' || field.name === 'mileage_km' ? ' min="0"' : '')) : '';
+    const type = field.kind === 'number' ? 'number' : 'text';
+    input = `<input data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}" type="${{type}}"${{extraAttrs}} value="${{esc(editorValue(value, field.kind))}}">`;
+  }}
+  return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(fieldLabel)}}</label>${{input}}</div>`;
 }}
 function renderAllFields(item) {{
   return `<details class="listing-fields" open><summary>Alle Werte anzeigen / inline bearbeiten</summary><div class="field-grid">${{fieldRegistry.map(field => inlineEditorValue(field, item)).join('')}}</div><div class="button-row" style="margin-top:16px"><button class="button" onclick="saveAllFields('${{esc(item.id)}}')">Speichern</button></div></details>`;
@@ -893,6 +949,21 @@ async function saveAllFields(id) {{
       document.getElementById('status').textContent = `${{name}} enthält ungültige Daten`;
     }}
   }});
+  let validationError = null;
+  document.querySelectorAll('.detail-card [data-field-name]').forEach(input => {{
+    const name = input.dataset.fieldName;
+    const kind = input.dataset.fieldKind || 'text';
+    if (kind === 'month' && input.value && !/^\\d{{4}}-\\d{{2}}$/.test(input.value)) {{
+      validationError = 'Datum muss das Format JJJJ-MM haben (z.B. 2008-06)';
+    }}
+    if (name === 'model_year' && input.value && (Number(input.value) < 2004 || Number(input.value) > 2014)) {{
+      validationError = 'model_year muss zwischen 2004 und 2014 liegen';
+    }}
+  }});
+  if (validationError) {{
+    document.getElementById('status').textContent = validationError;
+    return;
+  }}
   const keys = Object.keys(fields);
   if (keys.length === 0) {{ document.getElementById('status').textContent = 'Keine Felder zum Speichern.'; return; }}
   const response = await fetch('/api/listings/' + encodeURIComponent(id), {{method:'PATCH', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(fields)}});

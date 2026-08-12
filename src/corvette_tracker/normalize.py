@@ -4,7 +4,7 @@ import hashlib
 import re
 from urllib.parse import urlsplit, urlunsplit
 
-from .enums import TrimType
+from .enums import BodyStyleType, TransmissionType, TrimType
 from .models import Listing
 from .scoring import apply_score
 from .validation import apply_validation_flags
@@ -189,6 +189,127 @@ def extract_body_style(text: str) -> str | None:
     return None
 
 
+def extract_model_year(text: str) -> int | None:
+    pattern = re.compile(r"(?:MJ|Modelljahr|Baujahr)\s*:?\s*(20\d{2})", re.IGNORECASE)
+    match = pattern.search(text or "")
+    if not match:
+        return None
+    year = int(match.group(1))
+    return year if 2004 <= year <= 2014 else None
+
+
+def extract_power_kw(text: str) -> int | None:
+    match = re.search(r"\b(\d{3})\s*kW\b", text or "", re.IGNORECASE)
+    if not match:
+        return None
+    kw = int(match.group(1))
+    return kw if 100 <= kw <= 1000 else None
+
+
+def extract_displacement_cc(text: str) -> int | None:
+    lower = (text or "").lower()
+    if re.search(r"6[,.]2\s*(?:sc|supercharged|kompressor)", lower):
+        return 6162
+    pattern = re.compile(
+        r"(?<![\d.,])([67])[,.](\d)\s*(?:l|liter)\b",
+        re.IGNORECASE,
+    )
+    match = pattern.search(lower)
+    if not match:
+        return None
+    whole, dec = match.group(1), match.group(2)
+    if whole == "6" and dec == "0":
+        return 5967
+    if whole == "7" and dec == "0":
+        return 7008
+    if whole == "6" and dec == "2":
+        return 6162
+    return None
+
+
+def extract_drivetrain(text: str) -> str | None:
+    lower = (text or "").lower()
+    if any(x in lower for x in ("heckantrieb", "hinterradantrieb", "rwd", "rear wheel drive")):
+        return "Heckantrieb"
+    if any(x in lower for x in ("allrad", "awd", "4wd", "vierradantrieb")):
+        return "Allrad"
+    return None
+
+
+def extract_condition(text: str) -> str | None:
+    lower = (text or "").lower()
+    patterns = [
+        r"fahrzeugzustand\s*:?\s*([^;,\n]{2,40})",
+        r"zustand\s*:?\s*([^;,\n]{2,40})",
+    ]
+    for pat in patterns:
+        match = re.search(pat, lower)
+        if not match:
+            continue
+        value = match.group(1).strip()
+        if not (2 <= len(value) <= 40):
+            continue
+        if re.search(r"\d", value):
+            continue
+        if "unfall" in value:
+            continue
+        return value.capitalize()
+    return None
+
+
+def extract_owners_count(text: str) -> int | None:
+    lower = (text or "").lower()
+    match = re.search(r"(?:anzahl\s+vorbesitzer|vorbesitzer)\s*:?\s*(\d{1,2})", lower)
+    if match:
+        n = int(match.group(1))
+        return n if 1 <= n <= 20 else None
+    match = re.search(r"(\d{1,2})\s*\.?\s*hand\b", lower)
+    if match:
+        n = int(match.group(1))
+        return n if 1 <= n <= 20 else None
+    return None
+
+
+def extract_service_history(text: str) -> bool | None:
+    lower = (text or "").lower()
+    if "ohne scheckheft" in lower or "kein scheckheft" in lower:
+        return False
+    if any(x in lower for x in ("scheckheft", "scheckheftgepflegt", "serviceheft")):
+        return True
+    return None
+
+
+def extract_warranty(text: str) -> bool | None:
+    lower = (text or "").lower()
+    if "ohne garantie" in lower or "keine garantie" in lower:
+        return False
+    if "garantie" in lower:
+        return True
+    return None
+
+
+def extract_c6_options(text: str) -> dict[str, bool]:
+    lower = (text or "").lower()
+    options: dict[str, bool] = {}
+    if any(x in lower for x in ("magnetic ride", "magneticride", "f55")):
+        options["magnetic_ride"] = True
+    if any(x in lower for x in ("klappenauspuff", "npp", "active exhaust", "bimodal")):
+        options["active_exhaust"] = True
+    if any(x in lower for x in ("head-up-display", "head up display", "hud", "headup")):
+        if "hudson" not in lower:
+            options["head_up_display"] = True
+    if any(x in lower for x in ("navigationssystem", "navigation", "navi")):
+        options["navigation"] = True
+    if "bose" in lower and "bosch" not in lower:
+        options["bose_audio"] = True
+    if any(x in lower for x in ("lederausstattung", "ledersitze", "leder", "leather")):
+        if "lederlenkrad" not in lower or any(x in lower for x in ("lederausstattung", "ledersitze", "leder sitze")):
+            options["leather_interior"] = True
+    if any(x in lower for x in ("sitzheizung", "heated seats", "sitzbeheizung")):
+        options["heated_seats"] = True
+    return options
+
+
 def extract_vin(text: str) -> str | None:
     match = VIN_RE.search(text or "")
     return match.group(0).upper() if match else None
@@ -364,6 +485,9 @@ def normalize_listing(
         transmission=transmission,
         body_style=body_style,
     )
+    transmission_enum = TransmissionType(transmission) if transmission else None
+    body_style_enum = BodyStyleType(body_style) if body_style else None
+    options = extract_c6_options(combined)
     damage = None
     if "damage_reported" in risks:
         damage = "; ".join(flag for flag in risks if flag in {"damage_reported", "accident_reported"})
@@ -389,8 +513,8 @@ def normalize_listing(
         trim=trim,
         first_registration=extract_first_registration(combined),
         tuv_until=extract_tuv_until(combined),
-        transmission=transmission,
-        body_style=body_style,
+        transmission=transmission_enum,
+        body_style=body_style_enum,
         accident_status=accident,
         damage=damage,
         has_damage=True if "damage_reported" in risks else False if accident == "unfallfrei" else None,
@@ -399,6 +523,21 @@ def normalize_listing(
         origin_country=origin_country,
         origin_confidence=0.7 if origin_country else None,
         vin=extract_vin(combined),
+        model_year=extract_model_year(combined),
+        power_kw=extract_power_kw(combined),
+        displacement_cc=extract_displacement_cc(combined),
+        drivetrain=extract_drivetrain(combined),
+        condition=extract_condition(combined),
+        owners_count=extract_owners_count(combined),
+        service_history=extract_service_history(combined),
+        warranty=extract_warranty(combined),
+        magnetic_ride=options.get("magnetic_ride"),
+        active_exhaust=options.get("active_exhaust"),
+        head_up_display=options.get("head_up_display"),
+        navigation=options.get("navigation"),
+        bose_audio=options.get("bose_audio"),
+        leather_interior=options.get("leather_interior"),
+        heated_seats=options.get("heated_seats"),
         image_urls=list(dict.fromkeys(image_urls or [])),
         description_text=" ".join(description.split()) or None,
         risk_flags=risks,
