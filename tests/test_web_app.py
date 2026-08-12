@@ -540,3 +540,77 @@ def test_web_api_unmerge_returns_listing_without_cluster(tmp_path: Path):
     finally:
         server.shutdown()
         thread.join(timeout=5)
+
+
+def test_patch_invalid_date_rejected(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            request_json(
+                f"{base_url}/api/listings/autoscout24_123",
+                method="PATCH",
+                payload={"first_registration": "2010/06"},
+            )
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 400
+            assert "Format JJJJ-MM" in exc.read().decode("utf-8")
+        else:
+            raise AssertionError("invalid date should return 400")
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_patch_invalid_model_year_rejected(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            request_json(
+                f"{base_url}/api/listings/autoscout24_123",
+                method="PATCH",
+                payload={"model_year": 1999},
+            )
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 400
+        else:
+            raise AssertionError("invalid model_year should return 400")
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_patch_protected_field_rejected(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            request_json(
+                f"{base_url}/api/listings/autoscout24_123",
+                method="PATCH",
+                payload={"score": 99},
+            )
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 400
+            assert "Unsupported override" in exc.read().decode("utf-8")
+        else:
+            raise AssertionError("protected field should return 400")
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
