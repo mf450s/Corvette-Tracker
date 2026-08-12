@@ -8,7 +8,7 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
-from .enums import TrimType
+from .enums import BodyStyleType, TransmissionType, TrimType
 from .models import Listing
 from .validation import sanity_check_against_previous
 
@@ -181,7 +181,9 @@ CREATE TABLE IF NOT EXISTS online_status_history (
 """
 
 LISTING_FIELDS = {field.name for field in fields(Listing)}
-PROTECTED_OVERRIDE_FIELDS = {"id", "source", "source_listing_id", "url", "change_type", "previous_price_eur", "cluster_id"}
+PROTECTED_OVERRIDE_FIELDS = {"id", "source", "source_listing_id", "url", "change_type", "previous_price_eur", "cluster_id",
+                             "engine_confidence", "engine_note", "power_note", "estimated_power_hp", "origin_confidence",
+                             "inference_notes", "conflict_flags", "risk_flags", "validation_flags", "ai_enrichment", "score"}
 EDITABLE_FIELDS = LISTING_FIELDS - PROTECTED_OVERRIDE_FIELDS
 
 # Columns added to SCHEMA after the table first shipped. CREATE TABLE IF NOT
@@ -346,6 +348,16 @@ class TrackerStore:
                 data["trim"] = TrimType(data["trim"])
             except ValueError:
                 data["trim"] = None
+        if data.get("transmission") is not None:
+            try:
+                data["transmission"] = TransmissionType(data["transmission"])
+            except ValueError:
+                data["transmission"] = None
+        if data.get("body_style") is not None:
+            try:
+                data["body_style"] = BodyStyleType(data["body_style"])
+            except ValueError:
+                data["body_style"] = None
         return Listing(**data)
 
     def list_active(self) -> list[Listing]:
