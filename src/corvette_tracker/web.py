@@ -353,6 +353,21 @@ def render_app_shell() -> str:
     list_fields = {"equipment", "visual_flags", "image_urls", "risk_flags", "inference_notes", "conflict_flags"}
     dict_fields = {"ai_enrichment"}
     trim_options = [trim.value for trim in TrimType]
+    C6_EXTERIOR_COLORS = [
+        "Arctic White", "Black", "Blade Silver", "Carbon Flash", "Carlisle Blue",
+        "Crystal Red", "Cyber Gray", "Daytona Sunset Orange", "Inferno Orange",
+        "Jetstream Blue", "LeMans Blue", "Machine Silver", "Magnetic Red",
+        "Millennium Yellow", "Monterey Red", "Night Race Blue", "Precision Red",
+        "Supersonic Blue", "Sunset Orange", "Torch Red", "Victory Red",
+        "Velocity Yellow", "Atomic Orange",
+    ]
+    C6_INTERIOR_COLORS = [
+        "Ebony", "Cashmere", "Titanium", "Cobalt Red", "Linen", "Red", "Steel Gray",
+    ]
+    color_options = {
+        "exterior_color": C6_EXTERIOR_COLORS,
+        "interior_color": C6_INTERIOR_COLORS,
+    }
     FIELD_LABELS = {
         "id": "ID", "source": "Quelle", "source_listing_id": "Quellen-ID", "url": "URL",
         "title": "Titel", "generation": "Generation", "model": "Modell",
@@ -392,9 +407,22 @@ def render_app_shell() -> str:
             "kind": "month" if field.name in month_fields else "select" if field.name == "trim" or field.name in enum_options else "number" if field.name in numeric_fields else "boolean" if field.name in boolean_fields else "list" if field.name in list_fields else "json" if field.name in dict_fields else "text",
             "options": trim_options if field.name == "trim" else [o for o, _ in enum_options[field.name]] if field.name in enum_options else None,
             "option_labels": [l for _, l in enum_options[field.name]] if field.name in enum_options else None,
+            "color_options": color_options.get(field.name),
         }
         for field in fields(Listing)
     ]
+    EDITOR_PRIORITY = [
+        "price_eur", "price_label", "mileage_km", "title", "model", "model_year",
+        "trim", "transmission", "body_style", "engine", "power_hp", "power_kw",
+        "displacement_cc", "drivetrain", "exterior_color", "interior_color",
+        "first_registration", "tuv_until", "condition", "owners_count",
+        "service_history", "warranty", "magnetic_ride", "active_exhaust",
+        "head_up_display", "navigation", "bose_audio", "leather_interior",
+        "heated_seats", "eu_spec", "accident_status", "damage", "has_damage",
+        "seller_type", "vin", "location_raw", "location_country", "origin_country",
+        "equipment", "visual_flags", "description_text", "hidden",
+    ]
+    field_registry.sort(key=lambda f: EDITOR_PRIORITY.index(f["name"]) if f["name"] in EDITOR_PRIORITY else len(EDITOR_PRIORITY))
     field_registry_attr = html.escape(json.dumps(field_registry, ensure_ascii=False), quote=True)
     field_registry_js = json.dumps(field_registry, ensure_ascii=False)
     return f"""<!doctype html>
@@ -658,6 +686,11 @@ function inlineEditorValue(field, item) {{
     const optionLabels = field.option_labels || field.options;
     const options = field.options.map((option, i) => `<option value="${{esc(option)}}" ${{value === option ? 'selected' : ''}}>${{esc(optionLabels[i] || option)}}</option>`).join('');
     return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(fieldLabel)}}</label><select data-field-name="${{esc(field.name)}}" data-field-kind="select"><option value="" ${{value == null || value === '' ? 'selected' : ''}}>k.A.</option>${{options}}</select></div>`;
+  }}
+  if (field.color_options && Array.isArray(field.color_options) && field.color_options.length > 0) {{
+    const listId = 'color-list-' + field.name;
+    const datalist = '<datalist id="' + listId + '">' + field.color_options.map(opt => '<option value="' + esc(opt) + '">').join('') + '</datalist>';
+    return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.label || field.name)}}</label><input data-field-name="${{esc(field.name)}}" data-field-kind="text" list="${{listId}}" type="text" value="${{esc(editorValue(value, field.kind))}}" placeholder="Farbe wählen oder eingeben&hellip;">${{datalist}}</div>`;
   }}
   const tag = field.kind === 'json' || field.kind === 'list' || field.name === 'description_text' ? 'textarea' : 'input';
   let input = '';
