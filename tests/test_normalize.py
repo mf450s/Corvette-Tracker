@@ -1,13 +1,22 @@
 import json
 
-from corvette_tracker.enums import TrimType
+from corvette_tracker.enums import BodyStyleType, TransmissionType, TrimType
 from corvette_tracker.models import Listing
 from corvette_tracker.normalize import (
     detect_c6_candidate,
     extract_engine,
     extract_first_registration,
     extract_mileage_km,
+    extract_model_year,
     extract_power_hp,
+    extract_power_kw,
+    extract_displacement_cc,
+    extract_drivetrain,
+    extract_condition,
+    extract_owners_count,
+    extract_service_history,
+    extract_warranty,
+    extract_c6_options,
     extract_price_eur,
     extract_probable_engine_from_power,
     extract_risk_flags,
@@ -379,3 +388,114 @@ def test_listing_trim_enum_roundtrip_via_json():
     assert payload["trim"] == "Z06"
     restored = Listing(**payload)
     assert restored.trim == TrimType.Z06
+
+
+def test_extract_model_year():
+    assert extract_model_year("MJ 2008") == 2008
+    assert extract_model_year("Modelljahr 2010") == 2010
+    assert extract_model_year("Baujahr 2005") == 2005
+    assert extract_model_year("Kein Baujahr hier") is None
+
+
+def test_extract_power_kw():
+    assert extract_power_kw("377 kW") == 377
+    assert extract_power_kw("512 PS") is None
+    assert extract_power_kw("80 kW") is None
+
+
+def test_extract_displacement_cc():
+    assert extract_displacement_cc("7.0L") == 7008
+    assert extract_displacement_cc("6.2 L") == 6162
+    assert extract_displacement_cc("6.0L") == 5967
+    assert extract_displacement_cc("V8") is None
+
+
+def test_extract_owners_count():
+    assert extract_owners_count("Anzahl Vorbesitzer: 2") == 2
+    assert extract_owners_count("3. Hand") == 3
+    assert extract_owners_count("1 Hand") == 1
+    assert extract_owners_count("keine Angabe") is None
+
+
+def test_extract_condition():
+    assert extract_condition("Fahrzeugzustand: Sehr gut") == "Sehr gut"
+    assert extract_condition("Zustand: Gebraucht") == "Gebraucht"
+    assert extract_condition("Unfallfrei") is None
+
+
+def test_extract_service_history():
+    assert extract_service_history("Scheckheft gepflegt") is True
+    assert extract_service_history("ohne Scheckheft") is False
+    assert extract_service_history("kein Scheckheft") is False
+
+
+def test_extract_c6_options():
+    text = "Magnetic Ride, Klappenauspuff NPP, Head-Up-Display, Bose, Ledersitze, Sitzheizung"
+    options = extract_c6_options(text)
+    assert options["magnetic_ride"] is True
+    assert options["active_exhaust"] is True
+    assert options["head_up_display"] is True
+    assert options["bose_audio"] is True
+    assert options["leather_interior"] is True
+    assert options["heated_seats"] is True
+    assert "bose_audio" not in extract_c6_options("BOSCH")
+
+
+def test_normalize_listing_c6_fields():
+    listing = normalize_listing(
+        source="fixture",
+        source_listing_id="c6-fields",
+        url="https://example.test/c6-fields",
+        title="Corvette C6 Z06 MJ 2008",
+        description=(
+            "Fahrzeugzustand: Sehr gut, Anzahl Vorbesitzer: 2, Scheckheft gepflegt, "
+            "Garantie, Magnetic Ride, Klappenauspuff NPP, Head-Up-Display, Bose, "
+            "Ledersitze, Sitzheizung, 377 kW, 7.0 L, Heckantrieb"
+        ),
+        price_text="59.900 €",
+        location_raw="Hamburg",
+        image_urls=[],
+    )
+    assert listing is not None
+    assert listing.model_year == 2008
+    assert listing.power_kw == 377
+    assert listing.displacement_cc == 7008
+    assert listing.drivetrain == "Heckantrieb"
+    assert listing.condition == "Sehr gut"
+    assert listing.owners_count == 2
+    assert listing.service_history is True
+    assert listing.warranty is True
+    assert listing.magnetic_ride is True
+    assert listing.active_exhaust is True
+    assert listing.head_up_display is True
+    assert listing.bose_audio is True
+    assert listing.leather_interior is True
+    assert listing.heated_seats is True
+
+
+def test_normalize_transmission_body_enum():
+    listing_auto = normalize_listing(
+        source="fixture",
+        source_listing_id="auto-enum",
+        url="https://example.test/auto-enum",
+        title="Chevrolet Corvette C6",
+        description="Automatik",
+        price_text="25.000 €",
+        location_raw="Hamburg",
+        image_urls=[],
+    )
+    assert listing_auto is not None
+    assert listing_auto.transmission == TransmissionType.AUTOMATIC
+
+    listing_cab = normalize_listing(
+        source="fixture",
+        source_listing_id="cab-enum",
+        url="https://example.test/cab-enum",
+        title="Chevrolet Corvette C6",
+        description="Cabrio",
+        price_text="30.000 €",
+        location_raw="Hamburg",
+        image_urls=[],
+    )
+    assert listing_cab is not None
+    assert listing_cab.body_style == BodyStyleType.CABRIO
