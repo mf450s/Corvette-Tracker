@@ -953,7 +953,7 @@ async function saveAllFields(id) {{
   document.querySelectorAll('.detail-card [data-field-name]').forEach(input => {{
     const name = input.dataset.fieldName;
     const kind = input.dataset.fieldKind || 'text';
-    if (kind === 'month' && input.value && !/^\d{{4}}-\d{{2}}$/.test(input.value)) {{
+    if (kind === 'month' && input.value && !/^\\d{{4}}-\\d{{2}}$/.test(input.value)) {{
       validationError = 'Datum muss das Format JJJJ-MM haben (z.B. 2008-06)';
     }}
     if (name === 'model_year' && input.value && (Number(input.value) < 2004 || Number(input.value) > 2014)) {{
