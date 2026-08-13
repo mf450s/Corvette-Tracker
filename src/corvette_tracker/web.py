@@ -368,6 +368,39 @@ def render_app_shell() -> str:
         "exterior_color": C6_EXTERIOR_COLORS,
         "interior_color": C6_INTERIOR_COLORS,
     }
+    C6_COLOR_HEX = {
+        "Arctic White": "#F2F5F7",
+        "Black": "#101013",
+        "Blade Silver": "#C5C9CD",
+        "Carbon Flash": "#1B1B1D",
+        "Carlisle Blue": "#5FA8D9",
+        "Crystal Red": "#A4122C",
+        "Cyber Gray": "#6E7073",
+        "Daytona Sunset Orange": "#F26B1D",
+        "Inferno Orange": "#ED5F1A",
+        "Jetstream Blue": "#3D6D92",
+        "LeMans Blue": "#3169A6",
+        "Machine Silver": "#A9AFB5",
+        "Magnetic Red": "#8A2A36",
+        "Millennium Yellow": "#F9D900",
+        "Monterey Red": "#B03A4A",
+        "Night Race Blue": "#0A2240",
+        "Precision Red": "#D03C22",
+        "Supersonic Blue": "#4B6E9E",
+        "Sunset Orange": "#E26D2D",
+        "Torch Red": "#E4002B",
+        "Victory Red": "#9B111E",
+        "Velocity Yellow": "#F2C900",
+        "Atomic Orange": "#E86C1D",
+        "Ebony": "#1A1A1C",
+        "Cashmere": "#D9C7AE",
+        "Titanium": "#6C6A68",
+        "Cobalt Red": "#B02A3E",
+        "Linen": "#E9E1D4",
+        "Red": "#A0122C",
+        "Steel Gray": "#4B4E52",
+    }
+    color_hex_map_js = json.dumps(C6_COLOR_HEX, ensure_ascii=False)
     FIELD_LABELS = {
         "id": "ID", "source": "Quelle", "source_listing_id": "Quellen-ID", "url": "URL",
         "title": "Titel", "generation": "Generation", "model": "Modell",
@@ -495,6 +528,15 @@ def render_app_shell() -> str:
     .price-chart {{ width:100%; height:170px; margin:14px 0 6px; background:rgba(0,0,0,.18); border:1px solid var(--line); border-radius:12px; padding:10px; }}
     .price-chart svg {{ width:100%; height:100%; }}
     .online-event td {{ background:rgba(0,0,0,.14); }}
+    .color-picker {{ display:flex; flex-direction:column; gap:8px; }}
+    .color-picker-input-row {{ display:flex; gap:8px; align-items:center; }}
+    .color-swatch {{ width:16px; height:16px; border-radius:4px; border:1px solid var(--line); flex-shrink:0; }}
+    .color-swatch[data-unknown] {{ background:repeating-linear-gradient(45deg, #888 0, #888 4px, transparent 4px, transparent 8px); }}
+    .color-picker-toggle {{ padding:8px 10px; border:1px solid var(--line); border-radius:10px; background:rgba(0,0,0,.16); color:var(--text); cursor:pointer; }}
+    .color-picker-popup {{ display:grid; grid-template-columns:repeat(2,1fr); gap:4px; max-height:240px; overflow-y:auto; }}
+    .color-picker-popup[hidden] {{ display:none; }}
+    .color-option {{ display:flex; align-items:center; gap:6px; padding:6px 8px; border:0; background:transparent; color:var(--text); border-radius:8px; text-align:left; cursor:pointer; }}
+    .color-option:hover {{ background:var(--line); }}
   </style>
 </head>
 <body>
@@ -524,6 +566,10 @@ def render_app_shell() -> str:
 </section><div id="listings" class="grid"></div></main>
 <script data-field-registry="{field_registry_attr}">
 const fieldRegistry = {field_registry_js};
+const COLOR_HEX_MAP = {color_hex_map_js};
+function colorSwatch(name) {{
+  return COLOR_HEX_MAP[name] || null;
+}}
 let currentListings = [];
 let healthStatusMap = {{}};
 function getStatus(id) {{ return healthStatusMap[id] ?? 'unknown'; }}
@@ -688,9 +734,18 @@ function inlineEditorValue(field, item) {{
     return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(fieldLabel)}}</label><select data-field-name="${{esc(field.name)}}" data-field-kind="select"><option value="" ${{value == null || value === '' ? 'selected' : ''}}>k.A.</option>${{options}}</select></div>`;
   }}
   if (field.color_options && Array.isArray(field.color_options) && field.color_options.length > 0) {{
-    const listId = 'color-list-' + field.name;
-    const datalist = '<datalist id="' + listId + '">' + field.color_options.map(opt => '<option value="' + esc(opt) + '">').join('') + '</datalist>';
-    return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.label || field.name)}}</label><input data-field-name="${{esc(field.name)}}" data-field-kind="text" list="${{listId}}" type="text" value="${{esc(editorValue(value, field.kind))}}" placeholder="Farbe wählen oder eingeben&hellip;">${{datalist}}</div>`;
+    const popupOptions = field.color_options.map(optionName => {{
+      const hex = colorSwatch(optionName) || 'transparent';
+      return `<button type="button" class="color-option" data-color-option="${{esc(optionName)}}"><span class="color-swatch" style="background:${{hex}}"></span><span>${{esc(optionName)}}</span></button>`;
+    }}).join('');
+    const currentHex = colorSwatch(value) || null;
+    const swatchHtml = currentHex
+      ? `<span class="color-swatch" data-color-swatch style="background:${{currentHex}}"></span>`
+      : `<span class="color-swatch" data-color-swatch data-unknown></span>`;
+    return `<div class="field-editor color-picker" data-inline-field="${{esc(field.name)}}"><label>${{esc(field.label || field.name)}}</label>
+      <div class="color-picker-input-row"><input data-field-name="${{esc(field.name)}}" data-field-kind="text" data-color-input type="text" value="${{esc(editorValue(value, field.kind))}}" placeholder="Farbe wählen oder eingeben&hellip;">${{swatchHtml}}<button type="button" class="color-picker-toggle" data-color-toggle title="Farben anzeigen">▾</button></div>
+      <div class="color-picker-popup" hidden data-color-popup>${{popupOptions}}</div>
+    </div>`;
   }}
   const tag = field.kind === 'json' || field.kind === 'list' || field.name === 'description_text' ? 'textarea' : 'input';
   let input = '';
@@ -1071,6 +1126,67 @@ document.getElementById('run').addEventListener('click', async () => {{
 }});
 loadStatus();
 loadListings();
+
+document.addEventListener('click', function(event) {{
+  const toggle = event.target.closest('[data-color-toggle]');
+  if (toggle) {{
+    const picker = toggle.closest('.color-picker');
+    if (!picker) return;
+    const popup = picker.querySelector('[data-color-popup]');
+    if (!popup) return;
+    const currentlyHidden = popup.hidden;
+    closeColorPopups();
+    popup.hidden = !currentlyHidden;
+    event.stopPropagation();
+    return;
+  }}
+  const option = event.target.closest('[data-color-option]');
+  if (option) {{
+    const picker = option.closest('.color-picker');
+    const input = picker && picker.querySelector('[data-color-input]');
+    if (input) {{
+      input.value = option.dataset.colorOption;
+      input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+      const popup = picker.querySelector('[data-color-popup]');
+      if (popup) popup.hidden = true;
+    }}
+    event.stopPropagation();
+    return;
+  }}
+  if (!event.target.closest('[data-color-popup]') && !event.target.closest('.color-picker')) {{
+    closeColorPopups();
+  }}
+}});
+
+document.addEventListener('keydown', function(event) {{
+  if (event.key === 'Escape') closeColorPopups();
+}});
+
+document.addEventListener('input', function(event) {{
+  const input = event.target.closest('[data-color-input]');
+  if (!input) return;
+  updateColorSwatch(input);
+}});
+
+function closeColorPopups() {{
+  document.querySelectorAll('[data-color-popup]').forEach(popup => {{ popup.hidden = true; }});
+}}
+
+function updateColorSwatch(input) {{
+  const picker = input.closest('.color-picker');
+  if (!picker) return;
+  const swatch = picker.querySelector('[data-color-swatch]');
+  const hex = colorSwatch(input.value.trim());
+  if (swatch) {{
+    if (hex) {{
+      swatch.style.background = hex;
+      swatch.removeAttribute('data-unknown');
+    }} else {{
+      swatch.removeAttribute('style');
+      swatch.setAttribute('data-unknown', '');
+    }}
+  }}
+}}
 </script>
 </body>
 </html>"""
