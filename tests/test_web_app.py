@@ -234,6 +234,44 @@ def test_web_shell_shows_score_badge_on_overview_preview_image():
     assert html.index('<span class="score-badge">${esc(item.score ?? 0)}%</span>') < html.index('${image ? `<img')
 
 
+def test_web_shell_contains_priorities_picker():
+    html = render_app_shell()
+
+    assert "Meine Prioritäten" in html
+    assert "priorities-panel" in html
+    assert "corvette_priorities_v1" in html
+    assert "priority-weightbar" in html
+    assert "priorities-reset" in html
+    # Typ-A-Slider (Wichtigkeit 0-5) mit Default 3
+    for key in ("price_eur", "mileage_km", "model_year", "accident", "eu_spec"):
+        assert f'data-priority-key="{key}"' in html
+        assert 'data-priority-type="a" min="0" max="5" step="1" value="3"' in html
+    # Typ-B-Slider (Richtung -1/0/+1) mit Default 0
+    for key in ("transmission", "body_style", "engine"):
+        assert f'data-priority-key="{key}"' in html
+        assert 'data-priority-type="b" data-left-label=' in html
+        assert 'data-right-label=' in html
+        assert 'min="-1" max="1" step="1" value="0"' in html
+    assert "Nicht wichtig" in html
+    assert "Kritisch" in html
+    assert "Schalter" in html
+    assert "Automatik" in html
+    assert "Coupé" in html
+    assert "Cabrio" in html
+    assert "LS2/LS3" in html
+    assert "LS7/LS9" in html
+    # Persönlicher Score: JS-Berechnung, Badge, Sortieroptionen
+    assert "computeMyScores" in html
+    assert "myScoreFor" in html
+    assert "typeBPoints" in html
+    assert 'Mein: ${myScore}' in html
+    assert "mine-badge" in html
+    assert "Mein Score hoch" in html
+    assert "Mein Score niedrig" in html
+    assert "mein-score-desc" in html
+    assert "mein-score-asc" in html
+
+
 def test_web_api_returns_404_for_missing_listing(tmp_path: Path):
     app = TrackerWebApp(store=TrackerStore(tmp_path / "tracker.sqlite"), output_dir=tmp_path)
     server = app.make_server("127.0.0.1", 0)
