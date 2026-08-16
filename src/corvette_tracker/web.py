@@ -1086,10 +1086,13 @@ function typeBPoints(item, hpCut) {{
   }}
   const ep = getPriorityValue('power_hp');
   if (ep !== 0) {{
-    const hp = Number(item.power_hp);
-    if (!Number.isNaN(hp) && hpCut != null) {{
-      if (hp >= hpCut) total += (ep > 0 ? 10 : -10);
-      else total += (ep < 0 ? 10 : -10);
+    const rawHp = item.power_hp;
+    if (rawHp != null && rawHp !== '') {{
+      const hp = Number(rawHp);
+      if (!Number.isNaN(hp) && hpCut != null) {{
+        if (hp >= hpCut) total += (ep > 0 ? 10 : -10);
+        else total += (ep < 0 ? 10 : -10);
+      }}
     }}
   }}
   return total;
@@ -1109,7 +1112,9 @@ function myScoreFor(item, weights, extents, hpCut) {{
 }}
 function medianPowerHp(listings) {{
   const values = listings
-    .map(item => Number(item.power_hp))
+    .map(item => item.power_hp)
+    .filter(raw => raw != null && raw !== '')
+    .map(Number)
     .filter(value => !Number.isNaN(value));
   if (values.length === 0) return null;
   values.sort((a, b) => a - b);
