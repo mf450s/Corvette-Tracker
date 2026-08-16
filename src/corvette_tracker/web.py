@@ -563,7 +563,7 @@ def render_app_shell() -> str:
   </header>
   <main class="wrap"><section class="panel priorities-panel" id="priorities-panel">
   <div class="list-toolbar-head"><h2>Meine Prioritäten</h2><div class="list-toolbar-actions"><button id="priorities-reset" class="button secondary" type="button">Zurücksetzen</button></div></div>
-  <p class="priority-hint muted">Gewichte die Faktoren (0&nbsp;&ndash;&nbsp;5), die für dich zählen, und wähle Richtungs-Präferenzen (Schalter/Automatik, Coupé/Cabrio, LS2/LS3 vs. LS7/LS9). Daraus berechnet sich dein persönlicher Score „Mein:&nbsp;XX“ auf jeder Karte.</p>
+  <p class="priority-hint muted">Gewichte die Faktoren (0&nbsp;&ndash;&nbsp;5), die für dich zählen, und wähle Richtungs-Präferenzen (Schalter/Automatik, Coupé/Cabrio, weniger vs. mehr PS). Daraus berechnet sich dein persönlicher Score „Mein:&nbsp;XX“ auf jeder Karte.</p>
   <div class="priority-grid">
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Preis</span><span class="priority-live" data-priority-live="price_eur">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="price_eur" data-priority-type="a" min="0" max="5" step="1" value="3"></label>
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Laufleistung</span><span class="priority-live" data-priority-live="mileage_km">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="mileage_km" data-priority-type="a" min="0" max="5" step="1" value="3"></label>
@@ -572,7 +572,7 @@ def render_app_shell() -> str:
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">EU-Spec</span><span class="priority-live" data-priority-live="eu_spec">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="eu_spec" data-priority-type="a" min="0" max="5" step="1" value="3"></label>
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Getriebe</span><span class="priority-live" data-priority-live="transmission">egal</span></span><input type="range" class="priority-slider" data-priority-key="transmission" data-priority-type="b" data-left-label="Schalter" data-right-label="Automatik" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="transmission" data-dir="-1">Schalter</span><span class="priority-dir-label active" data-dir-label="transmission" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="transmission" data-dir="1">Automatik</span></span></label>
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Karosserie</span><span class="priority-live" data-priority-live="body_style">egal</span></span><input type="range" class="priority-slider" data-priority-key="body_style" data-priority-type="b" data-left-label="Coupé" data-right-label="Cabrio" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="body_style" data-dir="-1">Coupé</span><span class="priority-dir-label active" data-dir-label="body_style" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="body_style" data-dir="1">Cabrio</span></span></label>
-    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Leistung</span><span class="priority-live" data-priority-live="engine">egal</span></span><input type="range" class="priority-slider" data-priority-key="engine" data-priority-type="b" data-left-label="LS2/LS3" data-right-label="LS7/LS9" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="engine" data-dir="-1">LS2/LS3</span><span class="priority-dir-label active" data-dir-label="engine" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="engine" data-dir="1">LS7/LS9</span></span></label>
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Leistung</span><span class="priority-live" data-priority-live="power_hp">egal</span></span><input type="range" class="priority-slider" data-priority-key="power_hp" data-priority-type="b" data-left-label="weniger PS" data-right-label="mehr PS" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="power_hp" data-dir="-1">weniger PS</span><span class="priority-dir-label active" data-dir-label="power_hp" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="power_hp" data-dir="1">mehr PS</span></span></label>
   </div>
   <div class="priority-weightbar" id="priority-weightbar"></div>
 </section><section class="panel list-toolbar" id="filter-bar">
@@ -956,7 +956,7 @@ async function unmergeOffer(id) {{
 // ── Meine Prioritäten: Picker + persönlicher Score ────────────────────────
 const PRIORITY_A_LABELS = {{0:'Nicht wichtig',1:'Wenig wichtig',2:'Mäßig wichtig',3:'Wichtig',4:'Sehr wichtig',5:'Kritisch'}};
 const PRIORITY_A_NAMES = {{price_eur:'Preis', mileage_km:'Laufleistung', model_year:'Baujahr', accident:'Unfallfrei', eu_spec:'EU-Spec'}};
-const PRIORITY_DEFAULTS = {{price_eur:3, mileage_km:3, model_year:3, accident:3, eu_spec:3, transmission:0, body_style:0, engine:0}};
+const PRIORITY_DEFAULTS = {{price_eur:3, mileage_km:3, model_year:3, accident:3, eu_spec:3, transmission:0, body_style:0, power_hp:0}};
 const PRIORITY_STORAGE_KEY = 'corvette_priorities_v1';
 const PRIORITY_A_KEYS = ['price_eur','mileage_km','model_year','accident','eu_spec'];
 const PRIORITY_SEG_COLORS = ['#ef4444','#f59e0b','#eab308','#22c55e','#3b82f6'];
@@ -1070,7 +1070,7 @@ function factorNorm(key, item, extents) {{
   if (key === 'model_year') return Math.min(1, Math.max(0, t));
   return 0;
 }}
-function typeBPoints(item) {{
+function typeBPoints(item, hpCut) {{
   let total = 0;
   const tp = getPriorityValue('transmission');
   if (tp !== 0) {{
@@ -1084,15 +1084,20 @@ function typeBPoints(item) {{
     if (b === 'Coupé') total += (bp < 0 ? 10 : -10);
     else if (b === 'Cabrio') total += (bp > 0 ? 10 : -10);
   }}
-  const ep = getPriorityValue('engine');
+  const ep = getPriorityValue('power_hp');
   if (ep !== 0) {{
-    const e = item.engine || item.probable_engine;
-    if (e === 'LS2' || e === 'LS3') total += (ep < 0 ? 10 : -10);
-    else if (e === 'LS7' || e === 'LS9') total += (ep > 0 ? 10 : -10);
+    const rawHp = item.power_hp;
+    if (rawHp != null && rawHp !== '') {{
+      const hp = Number(rawHp);
+      if (!Number.isNaN(hp) && hpCut != null) {{
+        if (hp >= hpCut) total += (ep > 0 ? 10 : -10);
+        else total += (ep < 0 ? 10 : -10);
+      }}
+    }}
   }}
   return total;
 }}
-function myScoreFor(item, weights, extents) {{
+function myScoreFor(item, weights, extents, hpCut) {{
   let typeA = 50;
   if (weights) {{
     let acc = 0;
@@ -1103,14 +1108,27 @@ function myScoreFor(item, weights, extents) {{
     }});
     typeA = acc * 100;
   }}
-  return Math.min(100, Math.max(0, Math.round(typeA + typeBPoints(item))));
+  return Math.min(100, Math.max(0, Math.round(typeA + typeBPoints(item, hpCut))));
+}}
+function medianPowerHp(listings) {{
+  const values = listings
+    .map(item => item.power_hp)
+    .filter(raw => raw != null && raw !== '')
+    .map(Number)
+    .filter(value => !Number.isNaN(value));
+  if (values.length === 0) return null;
+  values.sort((a, b) => a - b);
+  const mid = Math.floor(values.length / 2);
+  if (values.length % 2 === 1) return values[mid];
+  return (values[mid - 1] + values[mid]) / 2;
 }}
 function computeMyScores(listings) {{
   const weights = priorityWeights();
   const extents = {{}};
   PRIORITY_A_KEYS.forEach(key => {{ extents[key] = factorExtents(listings, key); }});
+  const hpCut = medianPowerHp(listings);
   const map = new Map();
-  listings.forEach(item => {{ map.set(item.id, myScoreFor(item, weights, extents)); }});
+  listings.forEach(item => {{ map.set(item.id, myScoreFor(item, weights, extents, hpCut)); }});
   return map;
 }}
 function loadPriorities() {{
