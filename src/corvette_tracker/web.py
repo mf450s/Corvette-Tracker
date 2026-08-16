@@ -956,7 +956,7 @@ async function unmergeOffer(id) {{
 // ── Meine Prioritäten: Picker + persönlicher Score ────────────────────────
 const PRIORITY_A_LABELS = {{0:'Nicht wichtig',1:'Wenig wichtig',2:'Mäßig wichtig',3:'Wichtig',4:'Sehr wichtig',5:'Kritisch'}};
 const PRIORITY_A_NAMES = {{price_eur:'Preis', mileage_km:'Laufleistung', model_year:'Baujahr', accident:'Unfallfrei', eu_spec:'EU-Spec'}};
-const PRIORITY_DEFAULTS = {{price_eur:3, mileage_km:3, model_year:3, accident:3, eu_spec:3, transmission:0, body_style:0, engine:0}};
+const PRIORITY_DEFAULTS = {{price_eur:3, mileage_km:3, model_year:3, accident:3, eu_spec:3, transmission:0, body_style:0, power_hp:0}};
 const PRIORITY_STORAGE_KEY = 'corvette_priorities_v1';
 const PRIORITY_A_KEYS = ['price_eur','mileage_km','model_year','accident','eu_spec'];
 const PRIORITY_SEG_COLORS = ['#ef4444','#f59e0b','#eab308','#22c55e','#3b82f6'];
