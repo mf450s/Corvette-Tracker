@@ -537,6 +537,22 @@ def render_app_shell() -> str:
     .color-picker-popup[hidden] {{ display:none; }}
     .color-option {{ display:flex; align-items:center; gap:6px; padding:6px 8px; border:0; background:transparent; color:var(--text); border-radius:8px; text-align:left; cursor:pointer; }}
     .color-option:hover {{ background:var(--line); }}
+    .priorities-panel {{ }}
+    .priority-hint {{ margin:0 0 12px; font-size:12px; }}
+    .priority-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px; }}
+    .priority-field {{ display:grid; gap:6px; font-size:12px; color:var(--muted); min-width:0; }}
+    .priority-field-head {{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }}
+    .priority-name {{ color:var(--text); font-weight:700; font-size:13px; }}
+    .priority-live {{ color:var(--accent); font-weight:800; font-size:12px; white-space:nowrap; }}
+    .priority-slider {{ width:100%; accent-color:var(--accent); cursor:pointer; }}
+    .priority-dir-labels {{ display:flex; gap:6px; margin-top:2px; }}
+    .priority-dir-label {{ flex:1; text-align:center; color:var(--muted); border-top:1px solid var(--line); padding-top:4px; font-size:11px; }}
+    .priority-dir-label.active {{ color:var(--accent); font-weight:800; border-top-color:var(--accent); }}
+    .priority-weightbar {{ display:flex; height:28px; margin-top:16px; border-radius:999px; overflow:hidden; border:1px solid var(--line); background:rgba(0,0,0,.22); }}
+    .priority-weight-seg {{ display:flex; align-items:center; justify-content:center; min-width:0; overflow:hidden; font-size:11px; font-weight:800; color:white; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,.55); }}
+    .priority-weight-seg span {{ padding:0 4px; }}
+    .priority-weight-empty {{ padding:5px 12px; color:var(--muted); font-size:12px; }}
+    .mine-badge {{ position:absolute; top:10px; right:10px; left:auto; min-width:60px; background:linear-gradient(135deg,#3b82f6,#22c55e); }}
   </style>
 </head>
 <body>
@@ -545,7 +561,21 @@ def render_app_shell() -> str:
     <div class="toolbar"><button id="run">Jetzt crawlen</button><span id="status" class="status muted"></span></div>
     <p class="crawl-meta">Letzter Crawl: <strong id="last-crawl">noch nie</strong></p>
   </header>
-  <main class="wrap"><section class="panel list-toolbar" id="filter-bar">
+  <main class="wrap"><section class="panel priorities-panel" id="priorities-panel">
+  <div class="list-toolbar-head"><h2>Meine Prioritäten</h2><div class="list-toolbar-actions"><button id="priorities-reset" class="button secondary" type="button">Zurücksetzen</button></div></div>
+  <p class="priority-hint muted">Gewichte die Faktoren (0&nbsp;&ndash;&nbsp;5), die für dich zählen, und wähle Richtungs-Präferenzen (Schalter/Automatik, Coupé/Cabrio, LS2/LS3 vs. LS7/LS9). Daraus berechnet sich dein persönlicher Score „Mein:&nbsp;XX“ auf jeder Karte.</p>
+  <div class="priority-grid">
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Preis</span><span class="priority-live" data-priority-live="price_eur">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="price_eur" data-priority-type="a" min="0" max="5" step="1" value="3"></label>
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Laufleistung</span><span class="priority-live" data-priority-live="mileage_km">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="mileage_km" data-priority-type="a" min="0" max="5" step="1" value="3"></label>
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Baujahr</span><span class="priority-live" data-priority-live="model_year">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="model_year" data-priority-type="a" min="0" max="5" step="1" value="3"></label>
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Unfallfrei</span><span class="priority-live" data-priority-live="accident">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="accident" data-priority-type="a" min="0" max="5" step="1" value="3"></label>
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">EU-Spec</span><span class="priority-live" data-priority-live="eu_spec">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="eu_spec" data-priority-type="a" min="0" max="5" step="1" value="3"></label>
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Getriebe</span><span class="priority-live" data-priority-live="transmission">egal</span></span><input type="range" class="priority-slider" data-priority-key="transmission" data-priority-type="b" data-left-label="Schalter" data-right-label="Automatik" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="transmission" data-dir="-1">Schalter</span><span class="priority-dir-label active" data-dir-label="transmission" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="transmission" data-dir="1">Automatik</span></span></label>
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Karosserie</span><span class="priority-live" data-priority-live="body_style">egal</span></span><input type="range" class="priority-slider" data-priority-key="body_style" data-priority-type="b" data-left-label="Coupé" data-right-label="Cabrio" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="body_style" data-dir="-1">Coupé</span><span class="priority-dir-label active" data-dir-label="body_style" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="body_style" data-dir="1">Cabrio</span></span></label>
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Leistung</span><span class="priority-live" data-priority-live="engine">egal</span></span><input type="range" class="priority-slider" data-priority-key="engine" data-priority-type="b" data-left-label="LS2/LS3" data-right-label="LS7/LS9" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="engine" data-dir="-1">LS2/LS3</span><span class="priority-dir-label active" data-dir-label="engine" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="engine" data-dir="1">LS7/LS9</span></span></label>
+  </div>
+  <div class="priority-weightbar" id="priority-weightbar"></div>
+</section><section class="panel list-toolbar" id="filter-bar">
   <div class="list-toolbar-head"><h2>Listings</h2><div class="list-toolbar-actions"><p class="visible-count" id="visible-count">Alle Angebote</p><button id="reset-filters" class="button secondary" type="button">Filter zurücksetzen</button></div></div>
   <div class="filter-grid">
     <label class="filter-field search-field">Suche<input id="text-search" class="filter-input" type="text" placeholder="Titel, Beschreibung&hellip;"></label>
@@ -558,7 +588,7 @@ def render_app_shell() -> str:
     <div class="filter-field"><span>Preis</span><div class="range-pair"><input id="price-min" type="number" placeholder="von" min="0" step="1000"><span class="range-sep">&ndash;</span><input id="price-max" type="number" placeholder="bis" min="0" step="1000"><span class="range-unit">€</span></div></div>
     <div class="filter-field"><span>km</span><div class="range-pair"><input id="km-min" type="number" placeholder="von" min="0" step="1000"><span class="range-sep">&ndash;</span><input id="km-max" type="number" placeholder="bis" min="0" step="1000"><span class="range-unit">km</span></div></div>
     <div class="filter-field"><span>EZ (Jahr)</span><div class="range-pair"><input id="ez-from" type="text" placeholder="von" maxlength="4"><span class="range-sep">&ndash;</span><input id="ez-to" type="text" placeholder="bis" maxlength="4"></div></div>
-    <label class="filter-field">Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="status-online">Online zuerst</option><option value="status-offline">Offline zuerst</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option><option value="mileage-desc">km hoch</option><option value="ez-asc">EZ alt&rarr;neu</option><option value="ez-desc">EZ neu&rarr;alt</option><option value="created-desc">Neu hinzugefügt</option><option value="created-asc">Älteste zuerst</option><option value="source">Quelle</option></select></label>
+    <label class="filter-field">Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="mein-score-desc">Mein Score hoch</option><option value="mein-score-asc">Mein Score niedrig</option><option value="status-online">Online zuerst</option><option value="status-offline">Offline zuerst</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option><option value="mileage-desc">km hoch</option><option value="ez-asc">EZ alt&rarr;neu</option><option value="ez-desc">EZ neu&rarr;alt</option><option value="created-desc">Neu hinzugefügt</option><option value="created-asc">Älteste zuerst</option><option value="source">Quelle</option></select></label>
     <label class="filter-field">Änderung<select id="change-filter"><option value="all">Alle</option><option value="new">Neu</option><option value="price_change">Preis geändert</option><option value="metadata_change">Metadaten geändert</option><option value="unchanged">Unverändert</option></select></label>
     <label class="filter-field score-field"><span>Score &ge; <b id="score-value">0</b></span><input id="score-min" class="score-slider" type="range" min="0" max="100" value="0"></label>
     <label class="filter-check"><input id="hide-risk" type="checkbox">Riskante ausblenden</label>
@@ -572,6 +602,7 @@ function colorSwatch(name) {{
 }}
 let currentListings = [];
 let healthStatusMap = {{}};
+let myScoreMap = new Map();
 function getStatus(id) {{ return healthStatusMap[id] ?? 'unknown'; }}
 function statusLabel(s) {{ return s === 'online' ? 'Online' : s === 'offline' ? 'Offline' : 'Unbekannt'; }}
 function esc(value) {{ return String(value ?? '').replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}}[c])); }}
@@ -643,6 +674,8 @@ function sortListings(listings) {{
     if (order === 'status-online') return sta - stb;
     if (order === 'status-offline') return stb - sta;
     if (order === 'score-asc') return Number(a.score || 0) - Number(b.score || 0);
+    if (order === 'mein-score-desc') return (myScoreMap.get(b.id) ?? -1) - (myScoreMap.get(a.id) ?? -1);
+    if (order === 'mein-score-asc') return (myScoreMap.get(a.id) ?? 101) - (myScoreMap.get(b.id) ?? 101);
     if (order === 'price-asc') return Number(a.price_eur || 999999999) - Number(b.price_eur || 999999999);
     if (order === 'price-desc') return Number(b.price_eur || 0) - Number(a.price_eur || 0);
     if (order === 'mileage-asc') return Number(a.mileage_km || 999999999) - Number(b.mileage_km || 999999999);
@@ -699,10 +732,12 @@ function renderOverviewCard(item, group) {{
   const detailUrl = '/car/' + encodeURIComponent(item.id);
   const offerUrl = item.url || detailUrl;
   const st = getStatus(item.id);
+  const myScore = myScoreMap.get(item.id);
+  const myBadge = myScore != null ? `<span class="score-badge mine-badge">Mein: ${{myScore}}</span>` : '';
   const extraBadge = group && group.offerCount > 1 ? `<span class="offer-badge">${{group.offerCount}} Angebote · ${{esc(group.sourceSummary)}}</span>` : '';
   const offerLinks = group && group.offerCount > 1 ? '<p class="offer-links muted">Angebote: ' + group.members.map(m => '<a href="' + esc(m.url) + '" target="_blank" rel="noreferrer">' + esc(m.source) + '</a>').join(' · ') + '</p>' : '';
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}" data-status="${{st}}">
-    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{esc(item.score ?? 0)}}%</span>${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
+    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{esc(item.score ?? 0)}}%</span>${{myBadge}}${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
     <div class="body">
       <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}} &middot; Score ${{esc(item.score)}}</p>
       ${{extraBadge}}
@@ -918,6 +953,182 @@ async function unmergeOffer(id) {{
     alert(JSON.stringify(await response.json()));
   }}
 }}
+// ── Meine Prioritäten: Picker + persönlicher Score ────────────────────────
+const PRIORITY_A_LABELS = {{0:'Nicht wichtig',1:'Wenig wichtig',2:'Mäßig wichtig',3:'Wichtig',4:'Sehr wichtig',5:'Kritisch'}};
+const PRIORITY_A_NAMES = {{price_eur:'Preis', mileage_km:'Laufleistung', model_year:'Baujahr', accident:'Unfallfrei', eu_spec:'EU-Spec'}};
+const PRIORITY_DEFAULTS = {{price_eur:3, mileage_km:3, model_year:3, accident:3, eu_spec:3, transmission:0, body_style:0, engine:0}};
+const PRIORITY_STORAGE_KEY = 'corvette_priorities_v1';
+const PRIORITY_A_KEYS = ['price_eur','mileage_km','model_year','accident','eu_spec'];
+const PRIORITY_SEG_COLORS = ['#ef4444','#f59e0b','#eab308','#22c55e','#3b82f6'];
+let priorityValues = Object.assign({{}}, PRIORITY_DEFAULTS);
+
+function getPriorityValue(key) {{
+  const v = priorityValues[key];
+  return typeof v === 'number' ? v : (PRIORITY_DEFAULTS[key] ?? 0);
+}}
+function readPrioritySliders() {{
+  document.querySelectorAll('[data-priority-key]').forEach(el => {{
+    priorityValues[el.dataset.priorityKey] = Math.min(5, Math.max(-1, parseInt(el.value, 10) || 0));
+  }});
+}}
+function persistPriorities() {{
+  try {{ localStorage.setItem(PRIORITY_STORAGE_KEY, JSON.stringify(priorityValues)); }} catch (e) {{ /* ignore */ }}
+}}
+function updatePriorityLabels() {{
+  document.querySelectorAll('[data-priority-key]').forEach(el => {{
+    const v = parseInt(el.value, 10);
+    const field = el.closest('.priority-field');
+    const live = field && field.querySelector('[data-priority-live]');
+    if (live) {{
+      live.textContent = el.dataset.priorityType === 'a'
+        ? (PRIORITY_A_LABELS[v] ?? String(v))
+        : (v < 0 ? (el.dataset.leftLabel || 'links') : v > 0 ? (el.dataset.rightLabel || 'rechts') : 'egal');
+    }}
+    if (el.dataset.priorityType === 'b' && field) {{
+      field.querySelectorAll('[data-dir-label]').forEach(label => {{
+        label.classList.toggle('active', parseInt(label.dataset.dir, 10) === v);
+      }});
+    }}
+  }});
+}}
+function priorityWeights() {{
+  const active = PRIORITY_A_KEYS.filter(key => getPriorityValue(key) > 0);
+  if (active.length === 0) return null;
+  const sum = active.reduce((total, key) => total + getPriorityValue(key), 0);
+  const weights = {{}};
+  active.forEach(key => {{ weights[key] = getPriorityValue(key) / sum; }});
+  return weights;
+}}
+function priorityWeightBar() {{
+  const bar = document.getElementById('priority-weightbar');
+  if (!bar) return;
+  const active = PRIORITY_A_KEYS.filter(key => getPriorityValue(key) > 0);
+  if (active.length === 0) {{
+    bar.innerHTML = '<span class="priority-weight-empty muted">Keine aktiven Faktoren – es zählen nur Richtungs-Präferenzen.</span>';
+    return;
+  }}
+  const sum = active.reduce((total, key) => total + getPriorityValue(key), 0);
+  bar.innerHTML = active.map((key, index) => {{
+    const v = getPriorityValue(key);
+    const pct = (v / sum) * 100;
+    const label = PRIORITY_A_NAMES[key] || key;
+    return '<div class="priority-weight-seg" data-weight-key="' + key + '" style="width:' + pct.toFixed(2) + '%;background:' + PRIORITY_SEG_COLORS[index % PRIORITY_SEG_COLORS.length] + '" title="' + esc(label) + ': ' + v + ' (' + Math.round(pct) + '%)"><span>' + esc(label) + ' · ' + Math.round(pct) + '%</span></div>';
+  }}).join('');
+}}
+function itemYear(item) {{
+  const my = item.model_year;
+  if (my != null && my !== '') {{
+    const n = Number(my);
+    if (!Number.isNaN(n)) return n;
+  }}
+  const fr = item.first_registration;
+  if (typeof fr === 'string' && fr.length >= 4) {{
+    const y = parseInt(fr.substring(0, 4), 10);
+    if (!Number.isNaN(y)) return y;
+  }}
+  return null;
+}}
+function accidentNorm(item) {{
+  const hd = item.has_damage;
+  if (hd === true) return 0;
+  if (hd === false) return 1;
+  const st = String(item.accident_status || '').toLowerCase();
+  if (st === 'unfallfrei') return 1;
+  if (st === '' || st === 'unbekannt') return 0.5;
+  return 0;
+}}
+function euSpecNorm(item) {{
+  const v = item.eu_spec;
+  if (v === true) return 1;
+  if (v === false) return 0;
+  return 0.5;
+}}
+function factorExtents(listings, key) {{
+  let min = Infinity, max = -Infinity;
+  listings.forEach(item => {{
+    const raw = key === 'model_year' ? itemYear(item) : item[key];
+    if (raw == null || raw === '') return;
+    const n = Number(raw);
+    if (Number.isNaN(n)) return;
+    if (n < min) min = n;
+    if (n > max) max = n;
+  }});
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  return {{min: min, max: max}};
+}}
+function factorNorm(key, item, extents) {{
+  if (key === 'accident') return accidentNorm(item);
+  if (key === 'eu_spec') return euSpecNorm(item);
+  const raw = key === 'model_year' ? itemYear(item) : item[key];
+  if (raw == null || raw === '') return 0;
+  const n = Number(raw);
+  if (Number.isNaN(n) || !extents) return 0;
+  const span = extents.max - extents.min;
+  if (span === 0) return 0.5;
+  const t = (n - extents.min) / span;
+  if (key === 'price_eur' || key === 'mileage_km') return Math.min(1, Math.max(0, 1 - t));
+  if (key === 'model_year') return Math.min(1, Math.max(0, t));
+  return 0;
+}}
+function typeBPoints(item) {{
+  let total = 0;
+  const tp = getPriorityValue('transmission');
+  if (tp !== 0) {{
+    const t = item.transmission;
+    if (t === 'manual') total += (tp < 0 ? 10 : -10);
+    else if (t === 'automatic') total += (tp > 0 ? 10 : -10);
+  }}
+  const bp = getPriorityValue('body_style');
+  if (bp !== 0) {{
+    const b = item.body_style;
+    if (b === 'Coupé') total += (bp < 0 ? 10 : -10);
+    else if (b === 'Cabrio') total += (bp > 0 ? 10 : -10);
+  }}
+  const ep = getPriorityValue('engine');
+  if (ep !== 0) {{
+    const e = item.engine || item.probable_engine;
+    if (e === 'LS2' || e === 'LS3') total += (ep < 0 ? 10 : -10);
+    else if (e === 'LS7' || e === 'LS9') total += (ep > 0 ? 10 : -10);
+  }}
+  return total;
+}}
+function myScoreFor(item, weights, extents) {{
+  let typeA = 50;
+  if (weights) {{
+    let acc = 0;
+    PRIORITY_A_KEYS.forEach(key => {{
+      const w = weights[key];
+      if (!w) return;
+      acc += w * factorNorm(key, item, extents[key]);
+    }});
+    typeA = acc * 100;
+  }}
+  return Math.min(100, Math.max(0, Math.round(typeA + typeBPoints(item))));
+}}
+function computeMyScores(listings) {{
+  const weights = priorityWeights();
+  const extents = {{}};
+  PRIORITY_A_KEYS.forEach(key => {{ extents[key] = factorExtents(listings, key); }});
+  const map = new Map();
+  listings.forEach(item => {{ map.set(item.id, myScoreFor(item, weights, extents)); }});
+  return map;
+}}
+function loadPriorities() {{
+  try {{
+    const raw = localStorage.getItem(PRIORITY_STORAGE_KEY);
+    if (raw) {{
+      const parsed = JSON.parse(raw);
+      Object.keys(PRIORITY_DEFAULTS).forEach(key => {{
+        if (typeof parsed[key] === 'number') priorityValues[key] = parsed[key];
+      }});
+    }}
+  }} catch (e) {{ /* ignore */ }}
+  document.querySelectorAll('[data-priority-key]').forEach(el => {{
+    el.value = String(priorityValues[el.dataset.priorityKey] ?? PRIORITY_DEFAULTS[el.dataset.priorityKey] ?? 0);
+  }});
+  updatePriorityLabels();
+  priorityWeightBar();
+}}
 function renderOverviewPage() {{
   const grid = document.getElementById('listings');
   grid.classList.add('grid');
@@ -991,6 +1202,7 @@ function renderOverviewPage() {{
   
   const groups = groupListings(filtered);
   const primaries = groups.map(g => g.primary);
+  myScoreMap = computeMyScores(primaries);
   const sortedPrimaries = sortListings(primaries);
   const groupByPrimaryId = new Map(groups.map(g => [g.primary.id, g]));
   grid.innerHTML = sortedPrimaries.map(item => {{
@@ -1115,6 +1327,25 @@ document.getElementById('score-min').addEventListener('input', function() {{
   renderListings();
 }});
 document.getElementById('hide-risk').addEventListener('change', renderListings);
+document.querySelectorAll('[data-priority-key]').forEach(el => {{
+  el.addEventListener('input', function() {{
+    readPrioritySliders();
+    persistPriorities();
+    updatePriorityLabels();
+    priorityWeightBar();
+    renderListings();
+  }});
+}});
+document.getElementById('priorities-reset').addEventListener('click', function() {{
+  priorityValues = Object.assign({{}}, PRIORITY_DEFAULTS);
+  document.querySelectorAll('[data-priority-key]').forEach(el => {{
+    el.value = String(priorityValues[el.dataset.priorityKey]);
+  }});
+  try {{ localStorage.removeItem(PRIORITY_STORAGE_KEY); }} catch (e) {{ /* ignore */ }}
+  updatePriorityLabels();
+  priorityWeightBar();
+  renderListings();
+}});
 window.addEventListener('popstate', renderRoute);
 document.getElementById('run').addEventListener('click', async () => {{
   document.getElementById('status').textContent = 'Crawl läuft...';
@@ -1126,6 +1357,7 @@ document.getElementById('run').addEventListener('click', async () => {{
 }});
 loadStatus();
 loadListings();
+loadPriorities();
 
 document.addEventListener('click', function(event) {{
   const toggle = event.target.closest('[data-color-toggle]');
