@@ -247,7 +247,7 @@ def test_web_shell_contains_priorities_picker():
         assert f'data-priority-key="{key}"' in html
         assert 'data-priority-type="a" min="0" max="5" step="1" value="3"' in html
     # Typ-B-Slider (Richtung -1/0/+1) mit Default 0
-    for key in ("transmission", "body_style", "engine"):
+    for key in ("transmission", "body_style", "power_hp"):
         assert f'data-priority-key="{key}"' in html
         assert 'data-priority-type="b" data-left-label=' in html
         assert 'data-right-label=' in html
@@ -258,8 +258,8 @@ def test_web_shell_contains_priorities_picker():
     assert "Automatik" in html
     assert "Coupé" in html
     assert "Cabrio" in html
-    assert "LS2/LS3" in html
-    assert "LS7/LS9" in html
+    assert "weniger PS" in html
+    assert "mehr PS" in html
     # Persönlicher Score: JS-Berechnung, Badge, Sortieroptionen
     assert "computeMyScores" in html
     assert "myScoreFor" in html
