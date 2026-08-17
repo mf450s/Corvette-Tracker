@@ -552,7 +552,6 @@ def render_app_shell() -> str:
     .priority-weight-seg {{ display:flex; align-items:center; justify-content:center; min-width:0; overflow:hidden; font-size:11px; font-weight:800; color:white; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,.55); }}
     .priority-weight-seg span {{ padding:0 4px; }}
     .priority-weight-empty {{ padding:5px 12px; color:var(--muted); font-size:12px; }}
-    .mine-badge {{ position:absolute; top:10px; right:10px; left:auto; min-width:60px; background:linear-gradient(135deg,#3b82f6,#22c55e); }}
   </style>
 </head>
 <body>
@@ -588,7 +587,7 @@ def render_app_shell() -> str:
     <div class="filter-field"><span>Preis</span><div class="range-pair"><input id="price-min" type="number" placeholder="von" min="0" step="1000"><span class="range-sep">&ndash;</span><input id="price-max" type="number" placeholder="bis" min="0" step="1000"><span class="range-unit">€</span></div></div>
     <div class="filter-field"><span>km</span><div class="range-pair"><input id="km-min" type="number" placeholder="von" min="0" step="1000"><span class="range-sep">&ndash;</span><input id="km-max" type="number" placeholder="bis" min="0" step="1000"><span class="range-unit">km</span></div></div>
     <div class="filter-field"><span>EZ (Jahr)</span><div class="range-pair"><input id="ez-from" type="text" placeholder="von" maxlength="4"><span class="range-sep">&ndash;</span><input id="ez-to" type="text" placeholder="bis" maxlength="4"></div></div>
-    <label class="filter-field">Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="mein-score-desc">Mein Score hoch</option><option value="mein-score-asc">Mein Score niedrig</option><option value="status-online">Online zuerst</option><option value="status-offline">Offline zuerst</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option><option value="mileage-desc">km hoch</option><option value="ez-asc">EZ alt&rarr;neu</option><option value="ez-desc">EZ neu&rarr;alt</option><option value="created-desc">Neu hinzugefügt</option><option value="created-asc">Älteste zuerst</option><option value="source">Quelle</option></select></label>
+    <label class="filter-field">Sortierung<select id="listing-sort"><option value="score-desc">Score hoch</option><option value="score-asc">Score niedrig</option><option value="status-online">Online zuerst</option><option value="status-offline">Offline zuerst</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option><option value="mileage-desc">km hoch</option><option value="ez-asc">EZ alt&rarr;neu</option><option value="ez-desc">EZ neu&rarr;alt</option><option value="created-desc">Neu hinzugefügt</option><option value="created-asc">Älteste zuerst</option><option value="source">Quelle</option></select></label>
     <label class="filter-field">Änderung<select id="change-filter"><option value="all">Alle</option><option value="new">Neu</option><option value="price_change">Preis geändert</option><option value="metadata_change">Metadaten geändert</option><option value="unchanged">Unverändert</option></select></label>
     <label class="filter-field score-field"><span>Score &ge; <b id="score-value">0</b></span><input id="score-min" class="score-slider" type="range" min="0" max="100" value="0"></label>
     <label class="filter-check"><input id="hide-risk" type="checkbox">Riskante ausblenden</label>
@@ -673,9 +672,7 @@ function sortListings(listings) {{
     const stb = sb === 'online' ? 1 : sb === 'offline' ? 2 : 3;
     if (order === 'status-online') return sta - stb;
     if (order === 'status-offline') return stb - sta;
-    if (order === 'score-asc') return Number(a.score || 0) - Number(b.score || 0);
-    if (order === 'mein-score-desc') return (myScoreMap.get(b.id) ?? -1) - (myScoreMap.get(a.id) ?? -1);
-    if (order === 'mein-score-asc') return (myScoreMap.get(a.id) ?? 101) - (myScoreMap.get(b.id) ?? 101);
+    if (order === 'score-asc') return (myScoreMap.get(a.id) ?? 0) - (myScoreMap.get(b.id) ?? 0);
     if (order === 'price-asc') return Number(a.price_eur || 999999999) - Number(b.price_eur || 999999999);
     if (order === 'price-desc') return Number(b.price_eur || 0) - Number(a.price_eur || 0);
     if (order === 'mileage-asc') return Number(a.mileage_km || 999999999) - Number(b.mileage_km || 999999999);
@@ -685,7 +682,7 @@ function sortListings(listings) {{
     if (order === 'created-desc') return (b.created_at || '').localeCompare(a.created_at || '');
     if (order === 'created-asc') return (a.created_at || '').localeCompare(b.created_at || '');
     if (order === 'source') return (a.source || '').localeCompare(b.source || '');
-    return Number(b.score || 0) - Number(a.score || 0);
+    return (myScoreMap.get(b.id) ?? 0) - (myScoreMap.get(a.id) ?? 0);
   }});
 }}
 function groupListings(listings) {{
@@ -733,13 +730,13 @@ function renderOverviewCard(item, group) {{
   const offerUrl = item.url || detailUrl;
   const st = getStatus(item.id);
   const myScore = myScoreMap.get(item.id);
-  const myBadge = myScore != null ? `<span class="score-badge mine-badge">Mein: ${{myScore}}</span>` : '';
+  const badgeScore = myScore != null ? `${{myScore}}%` : '–';
   const extraBadge = group && group.offerCount > 1 ? `<span class="offer-badge">${{group.offerCount}} Angebote · ${{esc(group.sourceSummary)}}</span>` : '';
   const offerLinks = group && group.offerCount > 1 ? '<p class="offer-links muted">Angebote: ' + group.members.map(m => '<a href="' + esc(m.url) + '" target="_blank" rel="noreferrer">' + esc(m.source) + '</a>').join(' · ') + '</p>' : '';
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}" data-status="${{st}}">
-    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{esc(item.score ?? 0)}}%</span>${{myBadge}}${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
+    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{badgeScore}}</span>${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
     <div class="body">
-      <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}} &middot; Score ${{esc(item.score)}}</p>
+      <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}}</p>
       ${{extraBadge}}
       <h2><a class="title-link" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer">${{esc(item.title)}}</a></h2>
       <p class="price">${{fmtEur(item.price_eur)}}</p>
@@ -901,7 +898,7 @@ async function renderDetailPage(item) {{
     mergeButtons.push(`<button class="button secondary" onclick="unmergeOffer('${{esc(item.id)}}')">Vom Cluster trennen</button>`);
   }}
   const mergeButtonsHtml = mergeButtons.join('');
-  grid.innerHTML = `${{groupPanel}}${{renderHistory(payload.history, payload.online_history || [], payload.summary, payload.series)}}<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button>${{mergeButtonsHtml}}</div><p class="muted">${{esc(item.source)}} · Score ${{esc(item.score)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>`;
+  grid.innerHTML = `${{groupPanel}}${{renderHistory(payload.history, payload.online_history || [], payload.summary, payload.series)}}<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button>${{mergeButtonsHtml}}</div><p class="muted">${{esc(item.source)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>`;
 }}
 function switchOffer(id) {{
   history.pushState({{id: id}}, '', '/car/' + encodeURIComponent(id));
@@ -1169,6 +1166,7 @@ function renderOverviewPage() {{
   const scoreMin = parseInt(document.getElementById('score-min').value) || 0;
   const hideRisk = document.getElementById('hide-risk').checked;
   
+  myScoreMap = computeMyScores(currentListings);
   let filtered = currentListings.filter(item => {{
     // Status filter
     if (statusFilter !== 'all') {{
@@ -1212,7 +1210,7 @@ function renderOverviewPage() {{
     if (kmMin > 0 && (item.mileage_km == null || item.mileage_km < kmMin)) return false;
     if (kmMax > 0 && (item.mileage_km == null || item.mileage_km > kmMax)) return false;
     // Score minimum
-    if (scoreMin > 0 && (item.score == null || item.score < scoreMin)) return false;
+    if (scoreMin > 0 && (myScoreMap.get(item.id) ?? 0) < scoreMin) return false;
     // Hide risk — skip items with any risk_flag
     if (hideRisk && item.risk_flags && item.risk_flags.length > 0) return false;
     return true;
@@ -1220,7 +1218,6 @@ function renderOverviewPage() {{
   
   const groups = groupListings(filtered);
   const primaries = groups.map(g => g.primary);
-  myScoreMap = computeMyScores(primaries);
   const sortedPrimaries = sortListings(primaries);
   const groupByPrimaryId = new Map(groups.map(g => [g.primary.id, g]));
   grid.innerHTML = sortedPrimaries.map(item => {{

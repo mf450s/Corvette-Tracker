@@ -229,9 +229,9 @@ def test_web_shell_shows_score_badge_on_overview_preview_image():
     html = render_app_shell()
 
     assert "score-badge" in html
-    assert '<span class="score-badge">${esc(item.score ?? 0)}%</span>' in html
-    assert html.index('<span class="score-badge">${esc(item.score ?? 0)}%</span>') > html.index('<a class="image"')
-    assert html.index('<span class="score-badge">${esc(item.score ?? 0)}%</span>') < html.index('${image ? `<img')
+    assert '<span class="score-badge">${badgeScore}</span>' in html
+    assert html.index('<span class="score-badge">${badgeScore}</span>') > html.index('<a class="image"')
+    assert html.index('<span class="score-badge">${badgeScore}</span>') < html.index('${image ? `<img')
 
 
 def test_web_shell_contains_priorities_picker():
@@ -264,12 +264,10 @@ def test_web_shell_contains_priorities_picker():
     assert "computeMyScores" in html
     assert "myScoreFor" in html
     assert "typeBPoints" in html
-    assert 'Mein: ${myScore}' in html
-    assert "mine-badge" in html
-    assert "Mein Score hoch" in html
-    assert "Mein Score niedrig" in html
-    assert "mein-score-desc" in html
-    assert "mein-score-asc" in html
+    assert '<span class="score-badge">${badgeScore}</span>' in html
+    assert "mine-badge" not in html
+    assert "Mein Score hoch" not in html
+    assert "mein-score-desc" not in html
 
 
 def test_web_api_returns_404_for_missing_listing(tmp_path: Path):
