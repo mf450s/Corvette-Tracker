@@ -571,7 +571,7 @@ def render_app_shell() -> str:
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">EU-Spec</span><span class="priority-live" data-priority-live="eu_spec">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="eu_spec" data-priority-type="a" min="0" max="5" step="1" value="3"></label>
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Getriebe</span><span class="priority-live" data-priority-live="transmission">egal</span></span><input type="range" class="priority-slider" data-priority-key="transmission" data-priority-type="b" data-left-label="Schalter" data-right-label="Automatik" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="transmission" data-dir="-1">Schalter</span><span class="priority-dir-label active" data-dir-label="transmission" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="transmission" data-dir="1">Automatik</span></span></label>
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Karosserie</span><span class="priority-live" data-priority-live="body_style">egal</span></span><input type="range" class="priority-slider" data-priority-key="body_style" data-priority-type="b" data-left-label="Coupé" data-right-label="Cabrio" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="body_style" data-dir="-1">Coupé</span><span class="priority-dir-label active" data-dir-label="body_style" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="body_style" data-dir="1">Cabrio</span></span></label>
-    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Leistung</span><span class="priority-live" data-priority-live="power_hp">egal</span></span><input type="range" class="priority-slider" data-priority-key="power_hp" data-priority-type="b" data-left-label="weniger PS" data-right-label="mehr PS" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="power_hp" data-dir="-1">weniger PS</span><span class="priority-dir-label active" data-dir-label="power_hp" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="power_hp" data-dir="1">mehr PS</span></span></label>
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Leistung</span><span class="priority-live" data-priority-live="power_hp">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="power_hp" data-priority-type="a" min="0" max="5" step="1" value="3"><span class="priority-dir-labels"><button type="button" class="priority-dir-label" data-priority-dir="power_hp" data-dir="-1">weniger PS</button><button type="button" class="priority-dir-label active" data-priority-dir="power_hp" data-dir="0">egal</button><button type="button" class="priority-dir-label" data-priority-dir="power_hp" data-dir="1">mehr PS</button></span></label>
   </div>
   <div class="priority-weightbar" id="priority-weightbar"></div>
 </section><section class="panel list-toolbar" id="filter-bar">
@@ -952,10 +952,10 @@ async function unmergeOffer(id) {{
 }}
 // ── Meine Prioritäten: Picker + persönlicher Score ────────────────────────
 const PRIORITY_A_LABELS = {{0:'Nicht wichtig',1:'Wenig wichtig',2:'Mäßig wichtig',3:'Wichtig',4:'Sehr wichtig',5:'Kritisch'}};
-const PRIORITY_A_NAMES = {{price_eur:'Preis', mileage_km:'Laufleistung', model_year:'Baujahr', accident:'Unfallfrei', eu_spec:'EU-Spec'}};
-const PRIORITY_DEFAULTS = {{price_eur:3, mileage_km:3, model_year:3, accident:3, eu_spec:3, transmission:0, body_style:0, power_hp:0}};
+const PRIORITY_A_NAMES = {{price_eur:'Preis', mileage_km:'Laufleistung', model_year:'Baujahr', accident:'Unfallfrei', eu_spec:'EU-Spec', power_hp:'Leistung'}};
+const PRIORITY_DEFAULTS = {{price_eur:3, mileage_km:3, model_year:3, accident:3, eu_spec:3, transmission:0, body_style:0, power_hp:3, power_hp_dir:0}};
 const PRIORITY_STORAGE_KEY = 'corvette_priorities_v1';
-const PRIORITY_A_KEYS = ['price_eur','mileage_km','model_year','accident','eu_spec'];
+const PRIORITY_A_KEYS = ['price_eur','mileage_km','model_year','accident','eu_spec','power_hp'];
 const PRIORITY_SEG_COLORS = ['#ef4444','#f59e0b','#eab308','#22c55e','#3b82f6'];
 let priorityValues = Object.assign({{}}, PRIORITY_DEFAULTS);
 
