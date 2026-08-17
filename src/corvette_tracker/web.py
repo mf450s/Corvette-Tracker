@@ -1065,9 +1065,15 @@ function factorNorm(key, item, extents) {{
   const t = (n - extents.min) / span;
   if (key === 'price_eur' || key === 'mileage_km') return Math.min(1, Math.max(0, 1 - t));
   if (key === 'model_year') return Math.min(1, Math.max(0, t));
+  if (key === 'power_hp') {{
+    const dir = getPriorityValue('power_hp_dir');
+    if (dir > 0) return Math.min(1, Math.max(0, t));
+    if (dir < 0) return Math.min(1, Math.max(0, 1 - t));
+    return 0.5;
+  }}
   return 0;
 }}
-function typeBPoints(item, hpCut) {{
+function typeBPoints(item) {{
   let total = 0;
   const tp = getPriorityValue('transmission');
   if (tp !== 0) {{
@@ -1081,20 +1087,9 @@ function typeBPoints(item, hpCut) {{
     if (b === 'Coupé') total += (bp < 0 ? 10 : -10);
     else if (b === 'Cabrio') total += (bp > 0 ? 10 : -10);
   }}
-  const ep = getPriorityValue('power_hp');
-  if (ep !== 0) {{
-    const rawHp = item.power_hp;
-    if (rawHp != null && rawHp !== '') {{
-      const hp = Number(rawHp);
-      if (!Number.isNaN(hp) && hpCut != null) {{
-        if (hp >= hpCut) total += (ep > 0 ? 10 : -10);
-        else total += (ep < 0 ? 10 : -10);
-      }}
-    }}
-  }}
   return total;
 }}
-function myScoreFor(item, weights, extents, hpCut) {{
+function myScoreFor(item, weights, extents) {{
   let typeA = 50;
   if (weights) {{
     let acc = 0;
@@ -1105,27 +1100,14 @@ function myScoreFor(item, weights, extents, hpCut) {{
     }});
     typeA = acc * 100;
   }}
-  return Math.min(100, Math.max(0, Math.round(typeA + typeBPoints(item, hpCut))));
-}}
-function medianPowerHp(listings) {{
-  const values = listings
-    .map(item => item.power_hp)
-    .filter(raw => raw != null && raw !== '')
-    .map(Number)
-    .filter(value => !Number.isNaN(value));
-  if (values.length === 0) return null;
-  values.sort((a, b) => a - b);
-  const mid = Math.floor(values.length / 2);
-  if (values.length % 2 === 1) return values[mid];
-  return (values[mid - 1] + values[mid]) / 2;
+  return Math.min(100, Math.max(0, Math.round(typeA + typeBPoints(item))));
 }}
 function computeMyScores(listings) {{
   const weights = priorityWeights();
   const extents = {{}};
   PRIORITY_A_KEYS.forEach(key => {{ extents[key] = factorExtents(listings, key); }});
-  const hpCut = medianPowerHp(listings);
   const map = new Map();
-  listings.forEach(item => {{ map.set(item.id, myScoreFor(item, weights, extents, hpCut)); }});
+  listings.forEach(item => {{ map.set(item.id, myScoreFor(item, weights, extents)); }});
   return map;
 }}
 function loadPriorities() {{
