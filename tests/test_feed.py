@@ -1,7 +1,12 @@
 import json
 from pathlib import Path
 
-from corvette_tracker.feed import build_feed_payload, render_html_site, render_markdown_feed, write_exports
+from corvette_tracker.feed import (
+    build_feed_payload,
+    render_html_site,
+    render_markdown_feed,
+    write_exports,
+)
 from corvette_tracker.models import Listing
 
 
@@ -35,7 +40,9 @@ def listing(**overrides):
 
 
 def test_build_feed_payload_sorts_by_score_and_counts_summary():
-    payload = build_feed_payload([listing(score=70), listing(id="b", score=95, risk_flags=["damage_reported"])])
+    payload = build_feed_payload(
+        [listing(score=70), listing(id="b", score=95, risk_flags=["damage_reported"])]
+    )
 
     assert payload["summary"]["total_active"] == 2
     assert payload["summary"]["new_listings"] == 2
@@ -100,7 +107,9 @@ def test_render_html_site_contains_cards_filters_and_required_vehicle_fields():
 
 
 def test_render_html_site_shows_base_coupe_as_c6_coupe_variant():
-    html = render_html_site(build_feed_payload([listing(trim="Base", body_style="Coupé", engine="LS2", power_hp=404)]))
+    html = render_html_site(
+        build_feed_payload([listing(trim="Base", body_style="Coupé", engine="LS2", power_hp=404)])
+    )
 
     assert "C6 Coupé" in html
     assert "<dt>Variante</dt>" in html
@@ -124,7 +133,12 @@ def test_render_html_site_includes_gallery_thumbnails_for_multiple_images():
 
 
 def test_render_outputs_probable_engine_note_when_engine_is_inferred():
-    inferred = listing(engine=None, probable_engine="LS2", engine_confidence=0.86, engine_note="Leistung 404 PS → wahrscheinlich LS2")
+    inferred = listing(
+        engine=None,
+        probable_engine="LS2",
+        engine_confidence=0.86,
+        engine_note="Leistung 404 PS → wahrscheinlich LS2",
+    )
     payload = build_feed_payload([inferred])
 
     markdown = render_markdown_feed(payload)
@@ -135,7 +149,11 @@ def test_render_outputs_probable_engine_note_when_engine_is_inferred():
 
 
 def test_render_outputs_estimated_power_when_explicit_ps_is_missing():
-    item = listing(power_hp=None, estimated_power_hp=437, power_note="Motor LS3 → Leistung ca. 437 PS geschätzt")
+    item = listing(
+        power_hp=None,
+        estimated_power_hp=437,
+        power_note="Motor LS3 → Leistung ca. 437 PS geschätzt",
+    )
     payload = build_feed_payload([item])
 
     markdown = render_markdown_feed(payload)
@@ -177,7 +195,11 @@ def test_render_outputs_ai_enrichment_equipment_and_notes():
     enriched = listing(
         equipment=["Head-Up Display", "NPP Klappenauspuff"],
         visual_flags=["aftermarket_wheels"],
-        ai_enrichment={"provider": "fake-ai", "confidence": 0.82, "notes": "Bilder zeigen Zubehörfelgen."},
+        ai_enrichment={
+            "provider": "fake-ai",
+            "confidence": 0.82,
+            "notes": "Bilder zeigen Zubehörfelgen.",
+        },
     )
     payload = build_feed_payload([enriched])
 

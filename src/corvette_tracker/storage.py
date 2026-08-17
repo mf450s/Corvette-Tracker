@@ -54,7 +54,8 @@ def filter_listings(listings: list[Listing], filters: FilterParams) -> list[List
             # Check both engine and probable_engine
             vl = v.lower()
             result = [
-                l for l in result
+                l
+                for l in result
                 if (l.engine or "").lower() == vl or (l.probable_engine or "").lower() == vl
             ]
 
@@ -105,25 +106,16 @@ def filter_listings(listings: list[Listing], filters: FilterParams) -> list[List
 
         elif key == "ez_min":
             # Year prefix on first_registration (e.g. "2005-01" → "2005")
-            result = [
-                l for l in result
-                if l.first_registration and l.first_registration[:4] >= v
-            ]
+            result = [l for l in result if l.first_registration and l.first_registration[:4] >= v]
 
         elif key == "ez_max":
-            result = [
-                l for l in result
-                if l.first_registration and l.first_registration[:4] <= v
-            ]
+            result = [l for l in result if l.first_registration and l.first_registration[:4] <= v]
 
         elif key == "accident_status":
             result = [l for l in result if l.accident_status == v]
 
         elif key == "tuv_min":
-            result = [
-                l for l in result
-                if l.tuv_until and l.tuv_until[:4] >= v
-            ]
+            result = [l for l in result if l.tuv_until and l.tuv_until[:4] >= v]
 
         elif key == "eu_spec":
             if v == "true":
@@ -133,7 +125,8 @@ def filter_listings(listings: list[Listing], filters: FilterParams) -> list[List
 
         # Unknown keys are silently ignored (forward-compatible)
 
-    return result
+    return list(result)
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS listings (
@@ -181,9 +174,26 @@ CREATE TABLE IF NOT EXISTS online_status_history (
 """
 
 LISTING_FIELDS = {field.name for field in fields(Listing)}
-PROTECTED_OVERRIDE_FIELDS = {"id", "source", "source_listing_id", "url", "change_type", "previous_price_eur", "cluster_id",
-                             "engine_confidence", "engine_note", "power_note", "estimated_power_hp", "origin_confidence",
-                             "inference_notes", "conflict_flags", "risk_flags", "validation_flags", "ai_enrichment", "score"}
+PROTECTED_OVERRIDE_FIELDS = {
+    "id",
+    "source",
+    "source_listing_id",
+    "url",
+    "change_type",
+    "previous_price_eur",
+    "cluster_id",
+    "engine_confidence",
+    "engine_note",
+    "power_note",
+    "estimated_power_hp",
+    "origin_confidence",
+    "inference_notes",
+    "conflict_flags",
+    "risk_flags",
+    "validation_flags",
+    "ai_enrichment",
+    "score",
+}
 EDITABLE_FIELDS = LISTING_FIELDS - PROTECTED_OVERRIDE_FIELDS
 
 # Columns added to SCHEMA after the table first shipped. CREATE TABLE IF NOT
@@ -202,15 +212,11 @@ log = logging.getLogger(__name__)
 def _migrate_schema(conn: sqlite3.Connection) -> None:
     """Add columns that are missing from pre-existing tables."""
     for table, columns in REQUIRED_COLUMNS.items():
-        existing = {
-            row[1] for row in conn.execute(f"PRAGMA table_info({table})")
-        }
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
         for column, definition in columns.items():
             if column not in existing:
                 log.info("Migrating %s: adding column %s", table, column)
-                conn.execute(
-                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
-                )
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     conn.commit()
 
 
@@ -225,7 +231,9 @@ class TrackerStore:
         self.conn.commit()
 
     def _overrides_for(self, listing_id: str) -> dict[str, Any]:
-        row = self.conn.execute("SELECT payload_json FROM manual_overrides WHERE listing_id = ?", (listing_id,)).fetchone()
+        row = self.conn.execute(
+            "SELECT payload_json FROM manual_overrides WHERE listing_id = ?", (listing_id,)
+        ).fetchone()
         return dict(json.loads(row["payload_json"])) if row else {}
 
     def _apply_overrides(self, listing: Listing) -> Listing:
@@ -297,7 +305,13 @@ class TrackerStore:
                 )
                 self.conn.execute(
                     "INSERT INTO snapshots (listing_id, price_eur, mileage_km, change_type, payload_json) VALUES (?, ?, ?, ?, ?)",
-                    (listing.id, listing.price_eur, listing.mileage_km, listing.change_type, payload),
+                    (
+                        listing.id,
+                        listing.price_eur,
+                        listing.mileage_km,
+                        listing.change_type,
+                        payload,
+                    ),
                 )
                 result.append(listing)
             except Exception as exc:
@@ -317,7 +331,9 @@ class TrackerStore:
         return result
 
     def get_listing(self, listing_id: str) -> Listing | None:
-        row = self.conn.execute("SELECT payload_json FROM listings WHERE id = ?", (listing_id,)).fetchone()
+        row = self.conn.execute(
+            "SELECT payload_json FROM listings WHERE id = ?", (listing_id,)
+        ).fetchone()
         if row is None:
             return None
         return self._deserialize_listing(row["payload_json"])
@@ -361,7 +377,9 @@ class TrackerStore:
         return Listing(**data)
 
     def list_active(self) -> list[Listing]:
-        rows = self.conn.execute("SELECT payload_json FROM listings ORDER BY COALESCE(price_eur, 999999999), id").fetchall()
+        rows = self.conn.execute(
+            "SELECT payload_json FROM listings ORDER BY COALESCE(price_eur, 999999999), id"
+        ).fetchall()
         return [self._deserialize_listing(row["payload_json"]) for row in rows]
 
     def created_at_map(self) -> dict[str, str]:
@@ -579,7 +597,7 @@ class TrackerStore:
         is_online: bool,
         http_status: int | None = None,
         error_message: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Upsert the online status for a listing.
 
         Returns the current row as dict: {listing_id, is_online, last_checked_at, http_status, error_message}
@@ -630,7 +648,7 @@ class TrackerStore:
             for row in rows
         ]
 
-    def get_online_status(self, listing_id: str) -> dict | None:
+    def get_online_status(self, listing_id: str) -> dict[str, Any] | None:
         """Get current online status for a listing, or None if never checked."""
         row = self.conn.execute(
             "SELECT listing_id, is_online, last_checked_at, http_status, error_message FROM offer_online_status WHERE listing_id = ?",
@@ -660,7 +678,7 @@ class TrackerStore:
         self.conn.commit()
         return True
 
-    def merge_listings(self, listing_ids: list[str]) -> dict:
+    def merge_listings(self, listing_ids: list[str]) -> dict[str, Any]:
         """Manually merge two or more listings into the same cluster.
 
         Assigns the same manual_* cluster_id to all provided listings.
@@ -674,6 +692,8 @@ class TrackerStore:
         updated_listings: list[Listing] = []
         for lid in listing_ids:
             listing = self.get_listing(lid)
+            if listing is None:
+                raise KeyError(f"Unknown listing: {lid}")
             listing.cluster_id = group_id
             payload = json.dumps(listing.to_dict(), ensure_ascii=False, sort_keys=True)
             self.conn.execute(
@@ -707,7 +727,7 @@ class TrackerStore:
         *,
         is_online: bool | None = None,
         limit: int = 100,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """List online statuses, optionally filtered by online/offline flag."""
         if is_online is not None:
             rows = self.conn.execute(

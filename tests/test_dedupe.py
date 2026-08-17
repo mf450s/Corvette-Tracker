@@ -64,22 +64,49 @@ def test_assign_clusters_removes_exact_url_duplicates():
 
 # ── Soft-match with extended fields ──────────────────────────────────────────
 
+
 def test_assign_clusters_uses_transmission_year_power_fields():
     """Listings matching on legacy fields but with different transmission/year/power
     are still clustered (legacy fallback preserves backward compat).
     But when price & mileage also differ, new fields help keep them apart."""
     # Same legacy fields → same cluster (backward compat)
-    a = make_listing(id="a", url="https://a.test", transmission="manual", first_registration="2005-06", power_hp=404)
-    b = make_listing(id="b", url="https://b.test", transmission="automatic", first_registration="2008-03", power_hp=437)
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        transmission="manual",
+        first_registration="2005-06",
+        power_hp=404,
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        transmission="automatic",
+        first_registration="2008-03",
+        power_hp=437,
+    )
 
     clustered = assign_clusters([a, b])
     assert clustered[0].cluster_id == clustered[1].cluster_id  # legacy fallback matches
 
     # Different price + different mileage + different fields → different cluster
-    c = make_listing(id="c", url="https://c.test", transmission="manual", first_registration="2005-06", power_hp=404,
-                     price_eur=74900, mileage_km=22000)
-    d = make_listing(id="d", url="https://d.test", transmission="automatic", first_registration="2008-03", power_hp=437,
-                     price_eur=59900, mileage_km=72000)
+    c = make_listing(
+        id="c",
+        url="https://c.test",
+        transmission="manual",
+        first_registration="2005-06",
+        power_hp=404,
+        price_eur=74900,
+        mileage_km=22000,
+    )
+    d = make_listing(
+        id="d",
+        url="https://d.test",
+        transmission="automatic",
+        first_registration="2008-03",
+        power_hp=437,
+        price_eur=59900,
+        mileage_km=72000,
+    )
 
     clustered2 = assign_clusters([c, d])
     assert clustered2[0].cluster_id != clustered2[1].cluster_id
@@ -88,8 +115,12 @@ def test_assign_clusters_uses_transmission_year_power_fields():
 def test_assign_clusters_matches_different_trim_via_relaxed_key():
     """Listings with the same engine/location/price/mileage but different trim
     should still be clustered (via the no_trim fallback key)."""
-    a = make_listing(id="a", url="https://a.test", trim="Z06", engine="LS7", price_eur=59900, mileage_km=72000)
-    b = make_listing(id="b", url="https://b.test", trim="C6 Z06", engine="LS7", price_eur=59500, mileage_km=71000)
+    a = make_listing(
+        id="a", url="https://a.test", trim="Z06", engine="LS7", price_eur=59900, mileage_km=72000
+    )
+    b = make_listing(
+        id="b", url="https://b.test", trim="C6 Z06", engine="LS7", price_eur=59500, mileage_km=71000
+    )
 
     clustered = assign_clusters([a, b])
 
@@ -98,8 +129,24 @@ def test_assign_clusters_matches_different_trim_via_relaxed_key():
 
 def test_assign_clusters_matches_different_location_via_relaxed_key():
     """Listings differing only on location should still match via no_loc key."""
-    a = make_listing(id="a", url="https://a.test", location_raw="München", engine="LS7", trim="Z06", price_eur=59900, mileage_km=72000)
-    b = make_listing(id="b", url="https://b.test", location_raw="Berlin", engine="LS7", trim="Z06", price_eur=59500, mileage_km=71000)
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        location_raw="München",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59900,
+        mileage_km=72000,
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        location_raw="Berlin",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59500,
+        mileage_km=71000,
+    )
 
     clustered = assign_clusters([a, b])
 
@@ -108,8 +155,12 @@ def test_assign_clusters_matches_different_location_via_relaxed_key():
 
 def test_assign_clusters_matches_different_engine_via_relaxed_key():
     """Listings differing only on engine (one inferred, one explicit) match via no_eng key."""
-    a = make_listing(id="a", url="https://a.test", engine="LS7", trim="Z06", price_eur=59900, mileage_km=72000)
-    b = make_listing(id="b", url="https://b.test", engine=None, trim="Z06", price_eur=59000, mileage_km=71000)
+    a = make_listing(
+        id="a", url="https://a.test", engine="LS7", trim="Z06", price_eur=59900, mileage_km=72000
+    )
+    b = make_listing(
+        id="b", url="https://b.test", engine=None, trim="Z06", price_eur=59000, mileage_km=71000
+    )
 
     clustered = assign_clusters([a, b])
 
@@ -119,8 +170,24 @@ def test_assign_clusters_matches_different_engine_via_relaxed_key():
 def test_assign_clusters_does_not_overmatch():
     """Listings that share engine+location but not price+mileage should NOT match
     even via the legacy fallback."""
-    a = make_listing(id="a", url="https://a.test", engine="LS7", trim="Z06", price_eur=59900, mileage_km=72000, location_raw="München")
-    b = make_listing(id="b", url="https://b.test", engine="LS7", trim="Z51", price_eur=74900, mileage_km=22000, location_raw="München")
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59900,
+        mileage_km=72000,
+        location_raw="München",
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        engine="LS7",
+        trim="Z51",
+        price_eur=74900,
+        mileage_km=22000,
+        location_raw="München",
+    )
 
     clustered = assign_clusters([a, b])
 
@@ -128,6 +195,7 @@ def test_assign_clusters_does_not_overmatch():
 
 
 # ── enrich_clusters ──────────────────────────────────────────────────────────
+
 
 def test_enrich_clusters_fills_missing_scalar_fields():
     """enrich_clusters fills missing fields from cluster mates."""
@@ -146,8 +214,15 @@ def test_enrich_clusters_fills_missing_scalar_fields():
 
 def test_enrich_clusters_merges_list_fields():
     """enrich_clusters merges list fields (equipment, risk_flags) across cluster."""
-    a = make_listing(id="a", url="https://a.test", equipment=["ABS", "ESP"], risk_flags=["accident_reported"])
-    b = make_listing(id="b", url="https://b.test", equipment=["ABS", "Schiebedach"], risk_flags=["damage_reported"])
+    a = make_listing(
+        id="a", url="https://a.test", equipment=["ABS", "ESP"], risk_flags=["accident_reported"]
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        equipment=["ABS", "Schiebedach"],
+        risk_flags=["damage_reported"],
+    )
 
     clustered = assign_clusters([a, b])
     enriched = enrich_clusters(clustered)
@@ -174,8 +249,16 @@ def test_enrich_clusters_picks_best_score():
 
 def test_enrich_clusters_merges_image_urls():
     """enrich_clusters merges image URLs deduplicated across cluster."""
-    a = make_listing(id="a", url="https://a.test", image_urls=["https://img.test/1.jpg", "https://img.test/2.jpg"])
-    b = make_listing(id="b", url="https://b.test", image_urls=["https://img.test/2.jpg", "https://img.test/3.jpg"])
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        image_urls=["https://img.test/1.jpg", "https://img.test/2.jpg"],
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        image_urls=["https://img.test/2.jpg", "https://img.test/3.jpg"],
+    )
 
     clustered = assign_clusters([a, b])
     enriched = enrich_clusters(clustered)
@@ -190,7 +273,15 @@ def test_enrich_clusters_merges_image_urls():
 def test_enrich_clusters_preserves_singletons():
     """enrich_clusters does not modify listings that are not in a cluster."""
     a = make_listing(id="a", url="https://a.test", score=50)
-    b = make_listing(id="b", url="https://b.test", score=85, trim="ZR1", engine="LS9", price_eur=120000, mileage_km=30000)
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        score=85,
+        trim="ZR1",
+        engine="LS9",
+        price_eur=120000,
+        mileage_km=30000,
+    )
 
     clustered = assign_clusters([a, b])
     assert clustered[0].cluster_id != clustered[1].cluster_id
@@ -207,10 +298,24 @@ def test_enrich_clusters_preserves_singletons():
 
 def test_assign_clusters_same_color_matches():
     """Listings with same exterior_color should match (via color-augmented keys)."""
-    a = make_listing(id="a", url="https://a.test", engine="LS7", trim="Z06",
-                     price_eur=59900, mileage_km=72000, exterior_color="Schwarz")
-    b = make_listing(id="b", url="https://b.test", engine="LS7", trim="C6 Z06",
-                     price_eur=59500, mileage_km=71000, exterior_color="schwarz")
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59900,
+        mileage_km=72000,
+        exterior_color="Schwarz",
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        engine="LS7",
+        trim="C6 Z06",
+        price_eur=59500,
+        mileage_km=71000,
+        exterior_color="schwarz",
+    )
 
     clustered = assign_clusters([a, b])
 
@@ -221,10 +326,24 @@ def test_assign_clusters_different_color_keeps_apart():
     """Listings with clearly different exterior colors and different price/mileage
     should NOT match (color augments separation through more specific keys,
     and legacy fallback can't bridge different price+mileage)."""
-    a = make_listing(id="a", url="https://a.test", engine="LS7", trim="Z06",
-                     price_eur=59900, mileage_km=72000, exterior_color="Schwarz")
-    b = make_listing(id="b", url="https://b.test", engine="LS7", trim="Z06",
-                     price_eur=74900, mileage_km=22000, exterior_color="Rot")
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59900,
+        mileage_km=72000,
+        exterior_color="Schwarz",
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=74900,
+        mileage_km=22000,
+        exterior_color="Rot",
+    )
 
     clustered = assign_clusters([a, b])
 
@@ -233,10 +352,24 @@ def test_assign_clusters_different_color_keeps_apart():
 
 def test_assign_clusters_color_normalization():
     """German and English color names for the same color should match."""
-    a = make_listing(id="a", url="https://a.test", engine="LS7", trim="Z06",
-                     price_eur=59900, mileage_km=72000, exterior_color="Schwarz")
-    b = make_listing(id="b", url="https://b.test", engine="LS7", trim="Z06",
-                     price_eur=59500, mileage_km=71000, exterior_color="Black")
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59900,
+        mileage_km=72000,
+        exterior_color="Schwarz",
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59500,
+        mileage_km=71000,
+        exterior_color="Black",
+    )
 
     clustered = assign_clusters([a, b])
 
@@ -245,10 +378,24 @@ def test_assign_clusters_color_normalization():
 
 def test_assign_clusters_color_missing_fallback():
     """When one listing has no color, matching should still work via fallback keys."""
-    a = make_listing(id="a", url="https://a.test", engine="LS7", trim="Z06",
-                     price_eur=59900, mileage_km=72000, exterior_color="Schwarz")
-    b = make_listing(id="b", url="https://b.test", engine="LS7", trim="Z06",
-                     price_eur=59500, mileage_km=71000, exterior_color=None)
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59900,
+        mileage_km=72000,
+        exterior_color="Schwarz",
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59500,
+        mileage_km=71000,
+        exterior_color=None,
+    )
 
     clustered = assign_clusters([a, b])
 
@@ -285,10 +432,24 @@ def test_enrich_clusters_mileage_no_change_when_both_equal():
 def test_enrich_clusters_color_prefers_more_descriptive():
     """enrich_clusters picks the longer/more descriptive color name
     when both normalize to the same base color."""
-    a = make_listing(id="a", url="https://a.test", engine="LS7", trim="Z06",
-                     price_eur=59900, mileage_km=72000, exterior_color="Black")
-    b = make_listing(id="b", url="https://b.test", engine="LS7", trim="Z06",
-                     price_eur=59500, mileage_km=71000, exterior_color="schwarz")
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59900,
+        mileage_km=72000,
+        exterior_color="Black",
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59500,
+        mileage_km=71000,
+        exterior_color="schwarz",
+    )
 
     clustered = assign_clusters([a, b])
     enriched = enrich_clusters(clustered)
@@ -303,22 +464,46 @@ def test_enrich_clusters_color_prefers_more_descriptive():
 def test_enrich_clusters_merges_multi_source_details():
     """Three listings of the same car from different sources merge into complete records.
     Each source has partial details — the merge fills gaps from all sources."""
-    a = make_listing(id="a", url="https://a.test", source="autoscout24",
-                     price_eur=59900, mileage_km=72000,
-                     exterior_color="Schwarz", engine="LS7", trim="Z06",
-                     transmission=None, power_hp=505,
-                     equipment=["ABS", "ESP"])
-    b = make_listing(id="b", url="https://b.test", source="kleinanzeigen",
-                     price_eur=59500, mileage_km=71000,
-                     exterior_color=None, engine="LS7", trim="C6 Z06",
-                     transmission="manual", power_hp=None,
-                     equipment=["ABS", "Schiebedach"])
-    c = make_listing(id="c", url="https://c.test", source="mobile.de",
-                     price_eur=59000, mileage_km=71500,
-                     exterior_color="Black", engine="LS7", trim="Z06",
-                     transmission="manual", power_hp=505,
-                     equipment=["Schiebedach", "Tempomat"],
-                     interior_color="Schwarz")
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        source="autoscout24",
+        price_eur=59900,
+        mileage_km=72000,
+        exterior_color="Schwarz",
+        engine="LS7",
+        trim="Z06",
+        transmission=None,
+        power_hp=505,
+        equipment=["ABS", "ESP"],
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        source="kleinanzeigen",
+        price_eur=59500,
+        mileage_km=71000,
+        exterior_color=None,
+        engine="LS7",
+        trim="C6 Z06",
+        transmission="manual",
+        power_hp=None,
+        equipment=["ABS", "Schiebedach"],
+    )
+    c = make_listing(
+        id="c",
+        url="https://c.test",
+        source="mobile.de",
+        price_eur=59000,
+        mileage_km=71500,
+        exterior_color="Black",
+        engine="LS7",
+        trim="Z06",
+        transmission="manual",
+        power_hp=505,
+        equipment=["Schiebedach", "Tempomat"],
+        interior_color="Schwarz",
+    )
 
     clustered = assign_clusters([a, b, c])
     assert clustered[0].cluster_id == clustered[1].cluster_id == clustered[2].cluster_id
@@ -349,10 +534,24 @@ def test_enrich_clusters_merges_multi_source_details():
 
 def test_enrich_clusters_merges_eu_spec():
     """eu_spec boolean is propagated across cluster."""
-    a = make_listing(id="a", url="https://a.test", engine="LS7", trim="Z06",
-                     price_eur=59900, mileage_km=72000, eu_spec=True)
-    b = make_listing(id="b", url="https://b.test", engine="LS7", trim="Z06",
-                     price_eur=59500, mileage_km=71000, eu_spec=None)
+    a = make_listing(
+        id="a",
+        url="https://a.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59900,
+        mileage_km=72000,
+        eu_spec=True,
+    )
+    b = make_listing(
+        id="b",
+        url="https://b.test",
+        engine="LS7",
+        trim="Z06",
+        price_eur=59500,
+        mileage_km=71000,
+        eu_spec=None,
+    )
 
     clustered = assign_clusters([a, b])
     enriched = enrich_clusters(clustered)
@@ -363,9 +562,12 @@ def test_enrich_clusters_merges_eu_spec():
 
 # ── Re-listing cluster adoption ───────────────────────────────────────────────
 
+
 def test_assign_clusters_adopts_existing_cluster_id():
     existing = make_listing(id="existing", cluster_id="manual_abc123", url="https://existing.test")
-    fresh = make_listing(id="fresh", source="autoscout24", url="https://fresh.test", source_listing_id="new-id")
+    fresh = make_listing(
+        id="fresh", source="autoscout24", url="https://fresh.test", source_listing_id="new-id"
+    )
 
     clustered = assign_clusters([fresh], existing=[existing])
 
@@ -406,9 +608,15 @@ def test_assign_clusters_adopts_via_title_fallback():
 
 
 def test_assign_clusters_keeps_singleton_without_existing_match():
-    existing = make_listing(id="existing", cluster_id="manual_abc123",
-                            price_eur=120000, mileage_km=30000,
-                            engine="LS9", trim="ZR1", location_raw="Berlin")
+    existing = make_listing(
+        id="existing",
+        cluster_id="manual_abc123",
+        price_eur=120000,
+        mileage_km=30000,
+        engine="LS9",
+        trim="ZR1",
+        location_raw="Berlin",
+    )
     fresh = make_listing(id="fresh", source="autoscout24", url="https://fresh.test")
 
     clustered = assign_clusters([fresh], existing=[existing])

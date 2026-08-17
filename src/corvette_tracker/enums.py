@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from enum import Enum
 
+from typing_extensions import override
+
 
 class StrEnum(str, Enum):
     """String enum that also inherits from str for YAML/JSON compatibility."""
 
+    @override
     def __str__(self) -> str:
-        return self.value
+        return str(self.value)
 
 
 class EngineType(StrEnum):

@@ -1,4 +1,4 @@
-from corvette_tracker.http import CloudflareBlocked, is_cloudflare_challenge
+from corvette_tracker.http import is_cloudflare_challenge
 
 
 def test_is_cloudflare_challenge_detects_js_challenge_page():

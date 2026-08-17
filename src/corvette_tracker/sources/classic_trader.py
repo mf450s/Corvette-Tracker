@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
+from typing import Any
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -14,7 +15,7 @@ SOURCE = "Classic Trader"
 DEFAULT_URL = "https://www.classic-trader.com/de/automobile/suche/chevrolet/corvette"
 
 
-def _iter_json_ld_objects(value) -> Iterable[dict]:
+def _iter_json_ld_objects(value: Any) -> Iterable[dict[str, Any]]:
     if isinstance(value, dict):
         yield value
         for child in value.values():
@@ -24,7 +25,7 @@ def _iter_json_ld_objects(value) -> Iterable[dict]:
             yield from _iter_json_ld_objects(item)
 
 
-def _extract_price(item: dict) -> str:
+def _extract_price(item: dict[str, Any]) -> str:
     offers = item.get("offers") or {}
     if isinstance(offers, list):
         offers = offers[0] if offers else {}
@@ -32,7 +33,7 @@ def _extract_price(item: dict) -> str:
     return str(price or "")
 
 
-def _extract_images(item: dict) -> list[str]:
+def _extract_images(item: dict[str, Any]) -> list[str]:
     raw = item.get("image") or item.get("images") or []
     if isinstance(raw, str):
         raw = [raw]

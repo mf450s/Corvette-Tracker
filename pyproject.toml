@@ -12,11 +12,14 @@ dependencies = [
   "beautifulsoup4>=4.12",
   "pydantic>=2.0",
   "PyYAML>=6.0",
-  "pydantic>=2.0",
+  "typing_extensions>=4.12",
 ]
 
-[project.optional-dependencies]
-dev = ["pytest>=8"]
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "ruff>=0.16.3",
+]
 
 [project.scripts]
 corvette-tracker = "corvette_tracker.cli:main"
@@ -25,6 +28,58 @@ corvette-tracker-web = "corvette_tracker.web:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+# Local agent worktrees and generated build output are not project sources.
+extend-exclude = [".worktrees", "build"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4", "SIM", "PERF", "RUF"]
+
+# Existing long URLs, SQL, HTML/JS templates, fixture payloads, and established
+# compatibility patterns are kept local to the affected files. These exceptions
+# leave all other lint rules enabled and are intentionally not global.
+[tool.ruff.lint.per-file-ignores]
+"src/corvette_tracker/cli.py" = ["E501"]
+"src/corvette_tracker/config.py" = ["E501"]
+"src/corvette_tracker/dedupe.py" = ["B007", "E501", "E741", "PERF102", "SIM102"]
+"src/corvette_tracker/enums.py" = ["UP042"]
+"src/corvette_tracker/feed.py" = ["E501", "E741"]
+"src/corvette_tracker/health.py" = ["E501", "E741", "SIM110"]
+"src/corvette_tracker/http.py" = ["B904"]
+"src/corvette_tracker/normalize.py" = ["SIM102"]
+"src/corvette_tracker/storage.py" = ["E501", "E741", "F841"]
+"src/corvette_tracker/validation.py" = ["RUF001"]
+"src/corvette_tracker/web.py" = ["B904", "E501", "E741", "RUF001", "W293"]
+"tests/manual_e2e_health_check.py" = ["E402", "F841"]
+"tests/test_ai_enrichment.py" = ["C408", "E501"]
+"tests/test_cli.py" = ["E501"]
+"tests/test_dedupe.py" = ["C408"]
+"tests/test_feed.py" = ["C408"]
+"tests/test_filters.py" = ["E741"]
+"tests/test_health.py" = ["PERF403", "RUF012", "RUF059"]
+"tests/test_normalize.py" = ["E501", "RUF001"]
+"tests/test_re_scrape.py" = ["E501"]
+"tests/test_sources.py" = ["E501"]
+"tests/test_scoring.py" = ["C408"]
+"tests/test_storage.py" = ["E741"]
+"tests/test_web_app.py" = ["E501", "E741"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ty]
+
+[tool.ty.environment]
+python = ".venv"
+python-version = "3.11"
+extra-paths = ["src"]
+
+[tool.ty.rules]
+all = "error"
 
 [tool.setuptools.packages.find]
 where = ["src"]

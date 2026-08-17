@@ -9,9 +9,8 @@ import pytest
 
 from corvette_tracker.http import FetchError
 from corvette_tracker.models import Listing
-from corvette_tracker.re_scrape import re_scrape_offer, _identify_source
+from corvette_tracker.re_scrape import _identify_source, re_scrape_offer
 from corvette_tracker.storage import TrackerStore
-
 
 # ── _identify_source tests ───────────────────────────────────────────────
 
@@ -86,7 +85,7 @@ def test_kleinanzeigen_with_existing_listing(mock_fetch_html, store: TrackerStor
     # what it can; most detail fields stay as-is from the existing listing).
     mock_fetch_html.return_value = (
         "<html><body>"
-        '<h1>Corvette C6 Z06 Test</h1>'
+        "<h1>Corvette C6 Z06 Test</h1>"
         '<p id="viewad-price">34.900 €</p>'
         '<div class="addetailslist--detail">Erstzulassung 01/2009</div>'
         "</body></html>"
@@ -115,7 +114,7 @@ def test_kleinanzeigen_with_url_only(mock_fetch_html, store: TrackerStore) -> No
     url = "https://www.kleinanzeigen.de/s-anzeige/corvette-c6-54321-216-1406"
     mock_fetch_html.return_value = (
         "<html><body>"
-        '<h1>Corvette C6 für Bastler</h1>'
+        "<h1>Corvette C6 für Bastler</h1>"
         '<p id="viewad-price">12.500 €</p>'
         '<div class="addetailslist--detail">Kilometerstand 150.000 km</div>'
         '<div class="addetailslist--detail">Getriebe Schalter</div>'
@@ -152,11 +151,11 @@ def test_kleinanzeigen_fetch_failure(mock_fetch_html, store: TrackerStore) -> No
 # ── re_scrape_offer: AutoScout24 full re-scrape ──────────────────────
 
 
-AS24_DETAIL_HTML = '''\
+AS24_DETAIL_HTML = """\
 <html><body><script id="__NEXT_DATA__" type="application/json">
 {"props":{"pageProps":{"listingDetails":{"id":"e65b455d-a2cc-4bb9-adbd-77189c0a0dc4","url":"/angebote/corvette-zr1-benzin-gelb-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4","price":{"priceRaw":119980,"priceFormatted":"€ 119.980"},"images":["https://prod.pictures.autoscout24.net/listing-images/e65b455d-a2cc-4bb9-adbd-77189c0a0dc4_9b8bede3-1558-4705-b93c-45e369c0882e.jpg/1280x960.webp","https://prod.pictures.autoscout24.net/listing-images/e65b455d-a2cc-4bb9-adbd-77189c0a0dc4_fc79520e-612a-4d48-ac3c-883cbd4dc94a.jpg/1280x960.webp","https://prod.pictures.autoscout24.net/listing-images/e65b455d-a2cc-4bb9-adbd-77189c0a0dc4_ca65c50c-e2ce-4af2-bac1-a392f098ebd9.jpg/1280x960.webp"],"location":{"zip":"8301","city":"Kainbach bei Graz"},"vehicle":{"make":"Chevrolet","model":"Corvette","modelVersionInput":"ZR1","mileageInKmRaw":39801,"firstRegistrationDate":"2010-06-01","powerInHp":647,"gearbox":"Manual","bodyType":"Coupe"},"vehicleDetails":[{"label":"Getriebe","data":"Schaltgetriebe"},{"label":"Karosserieform","data":"Coupé"},{"label":"Leistung","data":"476 kW (647 PS)"},{"label":"Kilometerstand","data":"39.801 km"}]}}}}
 </script></body></html>
-'''
+"""
 
 
 @patch("corvette_tracker.re_scrape.fetch_html")
@@ -190,7 +189,10 @@ def test_autoscout24_with_existing_listing(mock_fetch_html, store: TrackerStore)
     # Fresh detail text replaces the old description (drops stale title prices)
     assert updated.description_text is not None
     assert "EXP € 109.480" not in (updated.description_text or "")
-    assert updated.url == "https://www.autoscout24.de/angebote/corvette-zr1-benzin-gelb-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
+    assert (
+        updated.url
+        == "https://www.autoscout24.de/angebote/corvette-zr1-benzin-gelb-e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
+    )
 
 
 @patch("corvette_tracker.re_scrape.fetch_html")

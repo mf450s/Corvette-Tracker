@@ -37,6 +37,7 @@ def make_listing(id="autoscout24_123", url="https://example.test/listing/123"):
 
 class _TestHandler(BaseHTTPRequestHandler):
     """Simple handler that serves configurable responses based on request path."""
+
     _responses: dict[str, tuple[int, str]] = {}
 
     @classmethod
@@ -75,6 +76,7 @@ def serve(handler_cls=BaseHTTPRequestHandler):
 
 def make_handler(*, responses: dict[str, tuple[int, str]] | None = None):
     """Create a handler class with preset responses for test requests."""
+
     class CustomHandler(BaseHTTPRequestHandler):
         _responses = responses or {}
 
@@ -226,6 +228,7 @@ def test_check_stale_offers_force_refresh(tmp_path: Path):
 
 class _RedirectHandler(BaseHTTPRequestHandler):
     """Handler that redirects /old -> /new with 302."""
+
     _redirects: dict[str, tuple[int, str]] = {}
 
     @classmethod
@@ -322,14 +325,14 @@ def test_check_single_url_canonical_redirect_is_online():
     """A redirect that preserves the listing identity (e.g. AutoScout24 URL
     rewrite) is a canonicalization — the offer is still online."""
     guid = "e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
-    handler_cls = make_redirect_handler(redirects={
-        f"/angebote/corvette-zr1-old-{guid}": f"/angebote/corvette-zr1-new-{guid}",
-    })
+    handler_cls = make_redirect_handler(
+        redirects={
+            f"/angebote/corvette-zr1-old-{guid}": f"/angebote/corvette-zr1-new-{guid}",
+        }
+    )
     server, base_url = serve(handler_cls)
     try:
-        status, error = _check_single_url(
-            f"{base_url}/angebote/corvette-zr1-old-{guid}"
-        )
+        status, error = _check_single_url(f"{base_url}/angebote/corvette-zr1-old-{guid}")
         assert status == 200
         assert error is None
     finally:
@@ -339,9 +342,11 @@ def test_check_single_url_canonical_redirect_is_online():
 def test_check_single_url_redirect_to_homepage_still_offline():
     """A redirect to a page without the listing identity stays offline."""
     guid = "e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
-    handler_cls = make_redirect_handler(redirects={
-        f"/offer-{guid}": "/homepage",
-    })
+    handler_cls = make_redirect_handler(
+        redirects={
+            f"/offer-{guid}": "/homepage",
+        }
+    )
     server, base_url = serve(handler_cls)
     try:
         status, error = _check_single_url(f"{base_url}/offer-{guid}")
@@ -354,9 +359,11 @@ def test_check_single_url_redirect_to_homepage_still_offline():
 def test_check_stale_offers_canonical_redirect_updates_url(tmp_path: Path):
     """A canonical redirect keeps the listing online and adopts the new URL."""
     guid = "e65b455d-a2cc-4bb9-adbd-77189c0a0dc4"
-    handler_cls = make_redirect_handler(redirects={
-        f"/old/offer-{guid}": f"/new/offer-{guid}",
-    })
+    handler_cls = make_redirect_handler(
+        redirects={
+            f"/old/offer-{guid}": f"/new/offer-{guid}",
+        }
+    )
     server, base_url = serve(handler_cls)
     try:
         store = TrackerStore(tmp_path / "tracker.sqlite")
@@ -412,9 +419,14 @@ def make_body_handler(*, responses: dict[str, tuple[int, str]]):
 
 def test_check_single_url_not_found_body():
     """A 200 response with 'Anzeige nicht gefunden' should be treated as offline."""
-    handler_cls = make_body_handler(responses={
-        "/gone-listing": (200, "<html><body>Die Anzeige wurde leider nicht gefunden.</body></html>"),
-    })
+    handler_cls = make_body_handler(
+        responses={
+            "/gone-listing": (
+                200,
+                "<html><body>Die Anzeige wurde leider nicht gefunden.</body></html>",
+            ),
+        }
+    )
     server, base_url = serve(handler_cls)
     try:
         # HEAD returns 200 (no body check), then GET returns 200 but body says not found
@@ -428,9 +440,14 @@ def test_check_single_url_not_found_body():
 
 def test_check_single_url_real_content_not_offline():
     """A real 200 response without not-found phrases should be online."""
-    handler_cls = make_body_handler(responses={
-        "/real-listing": (200, "<html><body>Chevrolet Corvette C6 Grand Sport, 54.900 €</body></html>"),
-    })
+    handler_cls = make_body_handler(
+        responses={
+            "/real-listing": (
+                200,
+                "<html><body>Chevrolet Corvette C6 Grand Sport, 54.900 €</body></html>",
+            ),
+        }
+    )
     server, base_url = serve(handler_cls)
     try:
         status, error = _check_single_url(f"{base_url}/real-listing")
@@ -465,9 +482,11 @@ def test_check_stale_offers_redirect_marked_offline(tmp_path: Path):
 
 def test_check_stale_offers_content_not_found_offline(tmp_path: Path):
     """A listing returning 200 with 'not found' body should be marked offline."""
-    handler_cls = make_body_handler(responses={
-        "/offer": (200, "<html><body>Anzeige nicht gefunden</body></html>"),
-    })
+    handler_cls = make_body_handler(
+        responses={
+            "/offer": (200, "<html><body>Anzeige nicht gefunden</body></html>"),
+        }
+    )
     server, base_url = serve(handler_cls)
     try:
         store = TrackerStore(tmp_path / "tracker.sqlite")
@@ -492,9 +511,11 @@ def test_check_stale_offers_content_not_found_offline(tmp_path: Path):
 
 def test_check_stale_offers_offline_stays_offline_on_recheck(tmp_path: Path):
     """An already-offline listing re-checked (still offline) stays offline."""
-    handler = make_handler(responses={
-        "/still-gone": (404, "Gone"),
-    })
+    handler = make_handler(
+        responses={
+            "/still-gone": (404, "Gone"),
+        }
+    )
     server, base_url = serve(handler)
     try:
         store = TrackerStore(tmp_path / "tracker.sqlite")
@@ -524,9 +545,11 @@ def test_check_stale_offers_offline_stays_offline_on_recheck(tmp_path: Path):
 def test_check_stale_offers_already_offline_no_change_without_check(tmp_path: Path):
     """An already-offline listing that hasn't been re-checked should persist as
     offline in the DB — the cache keeps the previous result."""
-    handler = make_handler(responses={
-        "/was-offline": (404, "Gone"),
-    })
+    handler = make_handler(
+        responses={
+            "/was-offline": (404, "Gone"),
+        }
+    )
     server, base_url = serve(handler)
     try:
         store = TrackerStore(tmp_path / "tracker.sqlite")
@@ -550,9 +573,11 @@ def test_check_stale_offers_already_offline_no_change_without_check(tmp_path: Pa
 
 def test_check_stale_offers_dry_run_does_not_write(tmp_path: Path):
     """dry_run=True checks URLs but does NOT update the database."""
-    handler = make_handler(responses={
-        "/dry": (404, "Gone"),
-    })
+    handler = make_handler(
+        responses={
+            "/dry": (404, "Gone"),
+        }
+    )
     server, base_url = serve(handler)
     try:
         store = TrackerStore(tmp_path / "tracker.sqlite")
@@ -578,9 +603,11 @@ def test_check_stale_offers_dry_run_does_not_write(tmp_path: Path):
 
 def test_check_stale_offers_dry_run_returns_results(tmp_path: Path):
     """dry_run=True still returns result details without writing."""
-    handler = make_handler(responses={
-        "/dry2": (200, "OK"),
-    })
+    handler = make_handler(
+        responses={
+            "/dry2": (200, "OK"),
+        }
+    )
     server, base_url = serve(handler)
     try:
         store = TrackerStore(tmp_path / "tracker.sqlite")
@@ -600,17 +627,21 @@ def test_check_stale_offers_dry_run_returns_results(tmp_path: Path):
 
 def test_check_stale_offers_dry_run_mixed_results(tmp_path: Path):
     """dry_run=True with both online and offline listings."""
-    handler_cls = make_handler(responses={
-        "/online": (200, "OK"),
-        "/offline": (404, "Gone"),
-    })
+    handler_cls = make_handler(
+        responses={
+            "/online": (200, "OK"),
+            "/offline": (404, "Gone"),
+        }
+    )
     server, base_url = serve(handler_cls)
     try:
         store = TrackerStore(tmp_path / "tracker.sqlite")
-        store.upsert_listings([
-            make_listing(id="listing_a", url=f"{base_url}/online"),
-            make_listing(id="listing_b", url=f"{base_url}/offline"),
-        ])
+        store.upsert_listings(
+            [
+                make_listing(id="listing_a", url=f"{base_url}/online"),
+                make_listing(id="listing_b", url=f"{base_url}/offline"),
+            ]
+        )
 
         summary = check_stale_offers(store, force=True, dry_run=True)
 
@@ -675,8 +706,9 @@ def test_get_cached_status_shows_cached_values(tmp_path: Path):
 
 def test_web_offers_status_endpoint(tmp_path: Path):
     """GET /api/offers/status should return JSON with offer status data."""
-    from corvette_tracker.web import TrackerWebApp
     import urllib.request
+
+    from corvette_tracker.web import TrackerWebApp
 
     handler_cls = make_handler(responses={"/integrate": (200, "OK")})
     api_server, api_base = serve(handler_cls)
@@ -709,8 +741,9 @@ def test_web_offers_status_endpoint(tmp_path: Path):
 
 def test_web_offers_check_endpoint(tmp_path: Path):
     """POST /api/offers/check should trigger a health check and return summary."""
-    from corvette_tracker.web import TrackerWebApp
     import urllib.request
+
+    from corvette_tracker.web import TrackerWebApp
 
     handler_cls = make_handler(responses={"/check-me": (200, "OK")})
     api_server, api_base = serve(handler_cls)
@@ -765,13 +798,13 @@ def test_positive_jsonld_signal_overrides_notfound_body():
             host, port = self.server.server_address[:2]
             base = f"http://{host}:{port}"
             body = (
-                '<html><body>'
-                'Dieses Inserat ist nicht mehr verfügbar, aber Sie können:'
+                "<html><body>"
+                "Dieses Inserat ist nicht mehr verfügbar, aber Sie können:"
                 '<script type="application/ld+json">'
                 f'{{"@type": "Car", "url": "{base}/listing", '
                 '"offers": {"availability": "InStock"}}'
-                '</script>'
-                '</body></html>'
+                "</script>"
+                "</body></html>"
             )
             body_bytes = body.encode("utf-8")
             self.send_response(200)
@@ -794,11 +827,7 @@ def test_positive_jsonld_signal_overrides_notfound_body():
 
 
 def test_no_positive_signal_stays_offline():
-    body = (
-        "<html><body>"
-        "Dieses Inserat ist nicht mehr verfügbar."
-        "</body></html>"
-    )
+    body = "<html><body>Dieses Inserat ist nicht mehr verfügbar.</body></html>"
     handler_cls = make_body_handler(responses={"/listing": (200, body)})
     server, base_url = serve(handler_cls)
     try:
@@ -859,14 +888,14 @@ def test_show_deleted_veil_wins_over_jsonld():
             host, port = self.server.server_address[:2]
             base = f"http://{host}:{port}"
             body = (
-                '<html><body>'
-                'var config = {showDeletedVeil: true}; '
-                'Dieses Inserat ist nicht mehr verfügbar.'
+                "<html><body>"
+                "var config = {showDeletedVeil: true}; "
+                "Dieses Inserat ist nicht mehr verfügbar."
                 '<script type="application/ld+json">'
                 f'{{"@type": "Car", "url": "{base}/listing", '
                 '"offers": {"availability": "InStock"}}'
-                '</script>'
-                '</body></html>'
+                "</script>"
+                "</body></html>"
             )
             body_bytes = body.encode("utf-8")
             self.send_response(200)
@@ -895,7 +924,7 @@ def test_positive_signal_wrong_url_ignored():
         '<script type="application/ld+json">'
         '{"@type": "Car", "url": "https://other.example/not-this", '
         '"offers": {"availability": "InStock"}}'
-        '</script>'
+        "</script>"
         "</body></html>"
     )
     handler_cls = make_body_handler(responses={"/listing": (200, body)})

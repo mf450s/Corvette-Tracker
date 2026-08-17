@@ -27,8 +27,7 @@ def _is_cloudflare_403(error: HTTPError) -> bool:
     if "cloudflare" in server.lower() or "cloudflare" in body.lower():
         return True
     return bool(
-        "Just a moment" in body
-        and ("cf_chl_opt" in body or "challenges.cloudflare.com" in body)
+        "Just a moment" in body and ("cf_chl_opt" in body or "challenges.cloudflare.com" in body)
     )
 
 
@@ -61,7 +60,7 @@ def fetch_html(url: str, *, timeout: int = 30, retries: int = 2) -> str:
                 body = raw.decode(charset, errors="replace")
                 if is_cloudflare_challenge(body):
                     raise CloudflareBlocked(f"cloudflare challenge at {url}")
-                return body
+                return str(body)
         except HTTPError as exc:
             if _is_cloudflare_403(exc):
                 raise CloudflareBlocked(f"cloudflare block (HTTP 403) at {url}")

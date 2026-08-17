@@ -16,7 +16,9 @@ PRICE_RE = re.compile(r"(?<!\d)(\d{1,3}(?:[.\s]\d{3})+|\d{4,6})\s*(?:€|EUR|VB)
 # \d{5,6} avoids matching years like "2011 km" as mileage (min realistic ~10000 km).
 KM_RE = re.compile(r"(?<!\d)(\d{1,3}(?:[.\s]\d{3})+|\d{5,6})\s*km\b", re.I)
 HP_RE = re.compile(r"\b(\d{3,4})\s*(?:PS|HP)\b", re.I)
-MONTH_YEAR_RE = re.compile(r"(?:EZ|Erstzulassung|HU|TÜV|TUV)?\s*(0?[1-9]|1[0-2])[./-](20\d{2}|19\d{2})", re.I)
+MONTH_YEAR_RE = re.compile(
+    r"(?:EZ|Erstzulassung|HU|TÜV|TUV)?\s*(0?[1-9]|1[0-2])[./-](20\d{2}|19\d{2})", re.I
+)
 VIN_RE = re.compile(r"\b[1-9A-HJ-NPR-Z]{17}\b", re.I)
 SEARCH_REQUEST_TITLE_RE = re.compile(r"\bsuche\b", re.I)
 
@@ -46,13 +48,13 @@ def extract_price_eur(text: str) -> int | None:
         if not value or not (5_000 <= value <= 500_000):
             continue
         # Check if this match has an explicit currency marker (€/EUR) right after the number
-        after_group1 = text[match.end(1):match.end(0)].strip()
+        after_group1 = text[match.end(1) : match.end(0)].strip()
         if after_group1:
             return value  # Explicit €/EUR/VB → unambiguous price
         # Bare number: skip if "km" appears nearby (mileage context, not price)
-        before = text[max(0, match.start() - 20):match.start()].lower()
-        after = text[match.end():match.end() + 15].lower()
-        if re.search(r'\bkm\b', before) or re.search(r'\bkm\b', after):
+        before = text[max(0, match.start() - 20) : match.start()].lower()
+        after = text[match.end() : match.end() + 15].lower()
+        if re.search(r"\bkm\b", before) or re.search(r"\bkm\b", after):
             continue
         if first_bare is None:
             first_bare = value
@@ -90,7 +92,7 @@ def extract_power_hp(text: str) -> int | None:
 
 def extract_first_registration(text: str) -> str | None:
     for match in MONTH_YEAR_RE.finditer(text or ""):
-        prefix = (text[max(0, match.start() - 18):match.start()] or "").lower()
+        prefix = (text[max(0, match.start() - 18) : match.start()] or "").lower()
         if "hu" in prefix or "tüv" in prefix or "tuv" in prefix:
             continue
         month = int(match.group(1))
@@ -103,7 +105,9 @@ def extract_first_registration(text: str) -> str | None:
 
 def extract_tuv_until(text: str) -> str | None:
     text = text or ""
-    for match in re.finditer(r"(?:HU|TÜV|TUV)\s*(?:bis)?\s*(0?[1-9]|1[0-2])[./-](20\d{2})", text, re.I):
+    for match in re.finditer(
+        r"(?:HU|TÜV|TUV)\s*(?:bis)?\s*(0?[1-9]|1[0-2])[./-](20\d{2})", text, re.I
+    ):
         return f"{int(match.group(2)):04d}-{int(match.group(1)):02d}"
     return None
 
@@ -118,7 +122,10 @@ def extract_engine(text: str) -> str | None:
     # "ZR1" → LS9 only when context is credible: no contradicting body-style
     # evidence (ZR1 was never a Cabrio) and "ZR1" is not just a style/accessory mention.
     if "ZR1" in upper and "CABRIO" not in upper and "CONVERTIBLE" not in upper:
-        if not re.search(r"\bZR1\s+(?:STYLE|OPTIK|FELGEN|SPOILER|LOOK|EMBLEM|BADGE|REPLIKA|UMBAU|KIT|GRILL|HOOD|FENDER|RIMS|WHEELS|DECAL)", upper):
+        if not re.search(
+            r"\bZR1\s+(?:STYLE|OPTIK|FELGEN|SPOILER|LOOK|EMBLEM|BADGE|REPLIKA|UMBAU|KIT|GRILL|HOOD|FENDER|RIMS|WHEELS|DECAL)",
+            upper,
+        ):
             return "LS9"
     if re.search(r"(?<!\d)6[,.]2\s*(?:L|V8|V\s*8|$)", upper):
         return "LS3"
@@ -164,17 +171,19 @@ def _extract_specific_trim(text: str) -> TrimType | None:
 
 
 def extract_trim(text: str) -> TrimType | None:
-    return _extract_specific_trim(text) or (TrimType.BASE if "CORVETTE" in (text or "").upper() else None)
+    return _extract_specific_trim(text) or (
+        TrimType.BASE if "CORVETTE" in (text or "").upper() else None
+    )
 
 
-def extract_transmission(text: str) -> str | None:
+def extract_transmission(text: str) -> TransmissionType | None:
     lower = (text or "").lower()
     if any(x in lower for x in ("schalter", "schaltgetriebe", "handschaltung", "manual", "6-gang")):
-        return "manual"
+        return TransmissionType.MANUAL
     if re.search(r"\bgetriebe\s*:?\s*manuell\b", lower) or re.search(r"\bmanuell\b", lower):
-        return "manual"
+        return TransmissionType.MANUAL
     if any(x in lower for x in ("automatik", "automatic", "a6", "aut.")):
-        return "automatic"
+        return TransmissionType.AUTOMATIC
     return None
 
 
@@ -253,7 +262,7 @@ def extract_condition(text: str) -> str | None:
             continue
         if "unfall" in value:
             continue
-        return value.capitalize()
+        return str(value.capitalize())
     return None
 
 
@@ -303,7 +312,9 @@ def extract_c6_options(text: str) -> dict[str, bool]:
     if "bose" in lower and "bosch" not in lower:
         options["bose_audio"] = True
     if any(x in lower for x in ("lederausstattung", "ledersitze", "leder", "leather")):
-        if "lederlenkrad" not in lower or any(x in lower for x in ("lederausstattung", "ledersitze", "leder sitze")):
+        if "lederlenkrad" not in lower or any(
+            x in lower for x in ("lederausstattung", "ledersitze", "leder sitze")
+        ):
             options["leather_interior"] = True
     if any(x in lower for x in ("sitzheizung", "heated seats", "sitzbeheizung")):
         options["heated_seats"] = True
@@ -349,7 +360,10 @@ def detect_c6_candidate(title: str, description: str = "") -> bool:
 
 def extract_accident_status(text: str) -> str:
     lower = (text or "").lower()
-    if any(token in lower for token in ("nicht unfallfrei", "unfallwagen", "unfallschaden", "reparierter unfall")):
+    if any(
+        token in lower
+        for token in ("nicht unfallfrei", "unfallwagen", "unfallschaden", "reparierter unfall")
+    ):
         return "unfall"
     if "unfallfrei" in lower:
         return "unfallfrei"
@@ -359,17 +373,35 @@ def extract_accident_status(text: str) -> str:
 def extract_risk_flags(text: str) -> list[str]:
     lower = (text or "").lower()
     flags: list[str] = []
-    if any(x in lower for x in ("unfallwagen", "nicht unfallfrei", "unfallschaden", "reparierter unfall")):
+    if any(
+        x in lower
+        for x in ("unfallwagen", "nicht unfallfrei", "unfallschaden", "reparierter unfall")
+    ):
         flags.append("accident_reported")
-    if any(x in lower for x in ("frontschaden", "seitenschaden", "motorschaden", "getriebeschaden", "schaden", "beschädigt")):
+    if any(
+        x in lower
+        for x in (
+            "frontschaden",
+            "seitenschaden",
+            "motorschaden",
+            "getriebeschaden",
+            "schaden",
+            "beschädigt",
+        )
+    ):
         flags.append("damage_reported")
     if any(x in lower for x in ("ohne tüv", "ohne tuv", "hu abgelaufen", "nicht fahrbereit")):
         flags.append("no_tuv")
-    if any(x in lower for x in ("us import", "usa import", "salvage", "rebuilt", "clean title", "carfax")):
+    if any(
+        x in lower
+        for x in ("us import", "usa import", "salvage", "rebuilt", "clean title", "carfax")
+    ):
         flags.append("salvage_import_possible")
     if any(x in lower for x in ("meilen", "miles", "abgelesen", "laut vorbesitzer")):
         flags.append("mileage_unclear")
-    if any(x in lower for x in ("kompressorumbau", "tracktool", "rennstrecke", "softwareoptimierung")):
+    if any(
+        x in lower for x in ("kompressorumbau", "tracktool", "rennstrecke", "softwareoptimierung")
+    ):
         flags.append("modified_heavily")
     if any(x in lower for x in ("verkauft", "reserviert")):
         flags.append("sold_or_reserved")
@@ -394,13 +426,17 @@ def apply_c6_inferences(
     inferred_trim = trim
     if engine == "LS7":
         if inferred_trim and inferred_trim != TrimType.Z06:
-            _append_unique(conflict_flags, f"conflict_ls7_trim_{inferred_trim.lower().replace(' ', '_')}")
+            _append_unique(
+                conflict_flags, f"conflict_ls7_trim_{inferred_trim.lower().replace(' ', '_')}"
+            )
         if inferred_trim != TrimType.Z06:
             _append_unique(inference_notes, "LS7 → Z06")
         inferred_trim = TrimType.Z06
     elif engine == "LS9":
         if inferred_trim and inferred_trim != TrimType.ZR1:
-            _append_unique(conflict_flags, f"conflict_ls9_trim_{inferred_trim.lower().replace(' ', '_')}")
+            _append_unique(
+                conflict_flags, f"conflict_ls9_trim_{inferred_trim.lower().replace(' ', '_')}"
+            )
         if inferred_trim != TrimType.ZR1:
             _append_unique(inference_notes, "LS9 → ZR1")
         inferred_trim = TrimType.ZR1
@@ -408,7 +444,10 @@ def apply_c6_inferences(
     inferred_transmission = transmission
     if inferred_trim in {TrimType.Z06, TrimType.ZR1}:
         if inferred_transmission and inferred_transmission != "manual":
-            _append_unique(conflict_flags, f"conflict_{inferred_trim.lower()}_transmission_{inferred_transmission}")
+            _append_unique(
+                conflict_flags,
+                f"conflict_{inferred_trim.lower()}_transmission_{inferred_transmission}",
+            )
         if inferred_transmission != "manual":
             _append_unique(inference_notes, f"{inferred_trim} → Schalter")
         inferred_transmission = "manual"
@@ -416,7 +455,10 @@ def apply_c6_inferences(
     inferred_body_style = body_style
     if inferred_trim in {TrimType.Z06, TrimType.ZR1}:
         if inferred_body_style and inferred_body_style != "Coupé":
-            _append_unique(conflict_flags, f"conflict_{inferred_trim.lower()}_body_{inferred_body_style.lower()}")
+            _append_unique(
+                conflict_flags,
+                f"conflict_{inferred_trim.lower()}_body_{inferred_body_style.lower()}",
+            )
         if inferred_body_style != "Coupé":
             _append_unique(inference_notes, f"{inferred_trim} → Coupé")
         inferred_body_style = "Coupé"
@@ -427,7 +469,13 @@ def apply_c6_inferences(
         if inferred_body_style == "Targa" and body_style in {"Targa", "Coupé"}:
             _append_unique(inference_notes, "Coupé/Coupe → Targa")
 
-    return inferred_trim, inferred_transmission, inferred_body_style, inference_notes, conflict_flags
+    return (
+        inferred_trim,
+        inferred_transmission,
+        inferred_body_style,
+        inference_notes,
+        conflict_flags,
+    )
 
 
 def normalize_listing(
@@ -458,17 +506,23 @@ def normalize_listing(
     probable_engine_match = extract_probable_engine_from_power(power_hp) if engine is None else None
     probable_engine = probable_engine_match[0] if probable_engine_match else None
     display_engine_for_power = engine or probable_engine
-    estimated_power_hp = estimate_power_from_engine(display_engine_for_power) if power_hp is None else None
+    estimated_power_hp = (
+        estimate_power_from_engine(display_engine_for_power) if power_hp is None else None
+    )
     power_note = (
         f"Motor {display_engine_for_power} → Leistung ca. {estimated_power_hp} PS geschätzt"
         if estimated_power_hp and display_engine_for_power
         else None
     )
-    engine_confidence = 1.0 if engine else probable_engine_match[1] if probable_engine_match else None
+    engine_confidence = (
+        1.0 if engine else probable_engine_match[1] if probable_engine_match else None
+    )
     engine_note = (
         "Motorcode explizit im Inserat erkannt"
         if engine
-        else f"Leistung {power_hp} PS → wahrscheinlich {probable_engine}" if probable_engine and power_hp else None
+        else f"Leistung {power_hp} PS → wahrscheinlich {probable_engine}"
+        if probable_engine and power_hp
+        else None
     )
     title_upper = title.upper()
     trim = (
@@ -490,8 +544,12 @@ def normalize_listing(
     options = extract_c6_options(combined)
     damage = None
     if "damage_reported" in risks:
-        damage = "; ".join(flag for flag in risks if flag in {"damage_reported", "accident_reported"})
-    origin_country = "US" if "salvage_import_possible" in risks and "import" in combined.lower() else None
+        damage = "; ".join(
+            flag for flag in risks if flag in {"damage_reported", "accident_reported"}
+        )
+    origin_country = (
+        "US" if "salvage_import_possible" in risks and "import" in combined.lower() else None
+    )
     listing = Listing(
         id=stable_id(source, source_listing_id, c_url),
         source=source,
@@ -499,7 +557,11 @@ def normalize_listing(
         url=c_url,
         title=" ".join(title.split()),
         generation="C6",
-        model=f"Chevrolet Corvette C6 {body_style}" if trim == TrimType.BASE and body_style else f"Chevrolet Corvette C6 {trim}" if trim else "Chevrolet Corvette C6",
+        model=f"Chevrolet Corvette C6 {body_style}"
+        if trim == TrimType.BASE and body_style
+        else f"Chevrolet Corvette C6 {trim}"
+        if trim
+        else "Chevrolet Corvette C6",
         price_eur=price,
         price_label=price_label,
         mileage_km=mileage,
@@ -517,7 +579,11 @@ def normalize_listing(
         body_style=body_style_enum,
         accident_status=accident,
         damage=damage,
-        has_damage=True if "damage_reported" in risks else False if accident == "unfallfrei" else None,
+        has_damage=True
+        if "damage_reported" in risks
+        else False
+        if accident == "unfallfrei"
+        else None,
         location_raw=(location_raw or "").strip() or None,
         location_country="DE" if location_raw else None,
         origin_country=origin_country,

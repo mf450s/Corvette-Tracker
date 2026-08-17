@@ -6,23 +6,31 @@ import os
 import re
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import fields
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 import yaml
+from typing_extensions import override
 
 from .enums import TrimType
 from .favicon import favicon_data_uri
-from .feed import build_feed_payload, format_eur, format_km, write_exports
-from .health import CACHE_TTL_SECONDS, check_stale_offers, get_cached_status
+from .feed import build_feed_payload, write_exports
+from .health import check_stale_offers, get_cached_status
 from .models import Listing
 from .re_scrape import re_scrape_offer
 from .scoring import apply_score, apply_scores, merge_scoring_config
-from .storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, FilterParams, TrackerStore, filter_listings
+from .storage import (
+    EDITABLE_FIELDS,
+    PROTECTED_OVERRIDE_FIELDS,
+    FilterParams,
+    TrackerStore,
+    filter_listings,
+)
 
 RunCallback = Callable[[], tuple[int, dict[str, Any]]]
 
@@ -51,7 +59,13 @@ def parse_interval_seconds(value: str | None) -> int | None:
 
 
 class TrackerWebApp:
-    def __init__(self, store: TrackerStore, output_dir: str | Path, run_callback: RunCallback | None = None, config_path: str | Path | None = None):
+    def __init__(
+        self,
+        store: TrackerStore,
+        output_dir: str | Path,
+        run_callback: RunCallback | None = None,
+        config_path: str | Path | None = None,
+    ):
         self.store = store
         self.output_dir = Path(output_dir)
         self.run_callback = run_callback
@@ -72,7 +86,9 @@ class TrackerWebApp:
         write_exports(payload, self.output_dir)
         source = self.output_dir / "site" / "index.html"
         if source.exists():
-            (self.output_dir / "index.html").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+            (self.output_dir / "index.html").write_text(
+                source.read_text(encoding="utf-8"), encoding="utf-8"
+            )
         return payload
 
     def latest_export_payload(self) -> dict[str, Any] | None:
@@ -109,10 +125,16 @@ class TrackerWebApp:
         return merge_scoring_config((data.get("scoring") or {}) if isinstance(data, dict) else {})
 
     def update_scoring_config(self, updates: dict[str, Any]) -> dict[str, Any]:
-        current_file = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) if self.config_path.exists() else {}
+        current_file = (
+            yaml.safe_load(self.config_path.read_text(encoding="utf-8"))
+            if self.config_path.exists()
+            else {}
+        )
         if not isinstance(current_file, dict):
             current_file = {}
-        current_scoring = current_file.get("scoring") if isinstance(current_file.get("scoring"), dict) else {}
+        current_scoring = (
+            current_file.get("scoring") if isinstance(current_file.get("scoring"), dict) else {}
+        )
         new_scoring = merge_scoring_config(current_scoring)
         if "base_score" in updates:
             new_scoring["base_score"] = int(updates["base_score"])
@@ -125,26 +147,42 @@ class TrackerWebApp:
             weights = updates["weights"]
             if not isinstance(weights, dict):
                 raise ValueError("weights must be an object")
-            new_scoring["weights"] = new_scoring.get("weights", {}) | {str(key): int(value) for key, value in weights.items()}
+            new_scoring["weights"] = new_scoring.get("weights", {}) | {
+                str(key): int(value) for key, value in weights.items()
+            }
         if "risk_penalties" in updates:
             penalties = updates["risk_penalties"]
             if not isinstance(penalties, dict):
                 raise ValueError("risk_penalties must be an object")
-            new_scoring["risk_penalties"] = new_scoring.get("risk_penalties", {}) | {str(key): int(value) for key, value in penalties.items()}
+            new_scoring["risk_penalties"] = new_scoring.get("risk_penalties", {}) | {
+                str(key): int(value) for key, value in penalties.items()
+            }
         current_file["scoring"] = new_scoring
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        self.config_path.write_text(yaml.safe_dump(current_file, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self.config_path.write_text(
+            yaml.safe_dump(current_file, allow_unicode=True, sort_keys=False), encoding="utf-8"
+        )
         self.refresh_exports()
         return new_scoring
 
     def run_once(self) -> tuple[int, dict[str, Any]]:
         if not self.run_callback:
             payload = self.refresh_exports()
-            self.last_run = {"exit_code": 0, "generated_at": payload.get("generated_at"), "summary": payload.get("summary", {}), "warnings": payload.get("warnings", [])}
+            self.last_run = {
+                "exit_code": 0,
+                "generated_at": payload.get("generated_at"),
+                "summary": payload.get("summary", {}),
+                "warnings": payload.get("warnings", []),
+            }
             return 0, payload
         with self.run_lock:
             exit_code, payload = self.run_callback()
-            self.last_run = {"exit_code": exit_code, "generated_at": payload.get("generated_at"), "summary": payload.get("summary", {}), "warnings": payload.get("warnings", [])}
+            self.last_run = {
+                "exit_code": exit_code,
+                "generated_at": payload.get("generated_at"),
+                "summary": payload.get("summary", {}),
+                "warnings": payload.get("warnings", []),
+            }
             return exit_code, payload
 
 
@@ -152,7 +190,8 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
     tracker_app: TrackerWebApp
     server_version = "CorvetteTrackerWeb/0.1"
 
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - stdlib signature
+    @override
+    def log_message(self, format: str, *args: Any) -> None:
         print(f"{self.address_string()} - {format % args}")
 
     def do_GET(self) -> None:
@@ -167,16 +206,22 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             filters: FilterParams = {k: v[0] for k, v in parse_qs(parsed.query).items()}
             scoring = self.tracker_app.scoring_config()
-            scored = [apply_score(listing, scoring) for listing in self.tracker_app.store.list_active()]
+            scored = [
+                apply_score(listing, scoring) for listing in self.tracker_app.store.list_active()
+            ]
             filtered = filter_listings(scored, filters)
             created_map = self.tracker_app.store.created_at_map()
-            self._send_json({
-                "listings": [{"created_at": created_map.get(l.id), **l.to_dict()} for l in filtered],
-                "total": len(filtered),
-                "total_all": len(scored),
-                "last_run": self.tracker_app.last_run_status(),
-                "last_crawl_at": self.tracker_app.last_crawl_at(),
-            })
+            self._send_json(
+                {
+                    "listings": [
+                        {"created_at": created_map.get(l.id), **l.to_dict()} for l in filtered
+                    ],
+                    "total": len(filtered),
+                    "total_all": len(scored),
+                    "last_run": self.tracker_app.last_run_status(),
+                    "last_crawl_at": self.tracker_app.last_crawl_at(),
+                }
+            )
             return
         history_prefix = "/api/listings/"
         history_suffix = "/history"
@@ -194,7 +239,13 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"scoring": self.tracker_app.scoring_config()})
             return
         if path == "/api/status":
-            self._send_json({"last_run": self.tracker_app.last_run_status(), "last_crawl_at": self.tracker_app.last_crawl_at(), "total_active": len(self.tracker_app.store.list_active())})
+            self._send_json(
+                {
+                    "last_run": self.tracker_app.last_run_status(),
+                    "last_crawl_at": self.tracker_app.last_crawl_at(),
+                    "total_active": len(self.tracker_app.store.list_active()),
+                }
+            )
             return
         if path == "/api/offers/status":
             store = self.tracker_app.store
@@ -208,7 +259,15 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/run":
             exit_code, payload = self.tracker_app.run_once()
             status = HTTPStatus.OK if exit_code in {0, 2} else HTTPStatus.INTERNAL_SERVER_ERROR
-            self._send_json({"exit_code": exit_code, "summary": payload.get("summary", {}), "warnings": payload.get("warnings", []), "last_crawl_at": self.tracker_app.last_crawl_at()}, status)
+            self._send_json(
+                {
+                    "exit_code": exit_code,
+                    "summary": payload.get("summary", {}),
+                    "warnings": payload.get("warnings", []),
+                    "last_crawl_at": self.tracker_app.last_crawl_at(),
+                },
+                status,
+            )
             return
         if path == "/api/scoring":
             try:
@@ -234,9 +293,14 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             except json.JSONDecodeError as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
                 return
-            status = HTTPStatus.OK if result.get("success") else (
-                HTTPStatus.NOT_FOUND if result.get("action") == "not_found"
-                else HTTPStatus.INTERNAL_SERVER_ERROR
+            status = (
+                HTTPStatus.OK
+                if result.get("success")
+                else (
+                    HTTPStatus.NOT_FOUND
+                    if result.get("action") == "not_found"
+                    else HTTPStatus.INTERNAL_SERVER_ERROR
+                )
             )
             self._send_json(result, status)
             return
@@ -244,7 +308,11 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             try:
                 body = self._read_json_body()
                 listing_ids = body.get("listing_ids")
-                if not isinstance(listing_ids, list) or len(listing_ids) < 2 or not all(isinstance(x, str) and x for x in listing_ids):
+                if (
+                    not isinstance(listing_ids, list)
+                    or len(listing_ids) < 2
+                    or not all(isinstance(x, str) and x for x in listing_ids)
+                ):
                     raise ValueError("listing_ids: mindestens 2 Angebote erforderlich")
                 result = self.tracker_app.store.merge_listings(listing_ids)
                 self.tracker_app.refresh_exports()
@@ -301,7 +369,9 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
                 if date_field in updates and updates[date_field] not in (None, ""):
                     val = str(updates[date_field])
                     if not re.fullmatch(r"\d{4}-\d{2}", val):
-                        raise ValueError(f"{date_field} muss das Format JJJJ-MM haben (z.B. 2008-06)")
+                        raise ValueError(
+                            f"{date_field} muss das Format JJJJ-MM haben (z.B. 2008-06)"
+                        )
             if "model_year" in updates and updates["model_year"] not in (None, ""):
                 try:
                     my = int(updates["model_year"])
@@ -348,21 +418,76 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
 
 
 def render_app_shell() -> str:
-    numeric_fields = {"price_eur", "mileage_km", "power_hp", "estimated_power_hp", "engine_confidence", "origin_confidence", "score", "previous_price_eur", "model_year", "power_kw", "displacement_cc", "owners_count"}
-    boolean_fields = {"eu_spec", "has_damage", "service_history", "warranty", "magnetic_ride", "active_exhaust", "head_up_display", "navigation", "bose_audio", "leather_interior", "heated_seats"}
-    list_fields = {"equipment", "visual_flags", "image_urls", "risk_flags", "inference_notes", "conflict_flags"}
+    numeric_fields = {
+        "price_eur",
+        "mileage_km",
+        "power_hp",
+        "estimated_power_hp",
+        "engine_confidence",
+        "origin_confidence",
+        "score",
+        "previous_price_eur",
+        "model_year",
+        "power_kw",
+        "displacement_cc",
+        "owners_count",
+    }
+    boolean_fields = {
+        "eu_spec",
+        "has_damage",
+        "service_history",
+        "warranty",
+        "magnetic_ride",
+        "active_exhaust",
+        "head_up_display",
+        "navigation",
+        "bose_audio",
+        "leather_interior",
+        "heated_seats",
+    }
+    list_fields = {
+        "equipment",
+        "visual_flags",
+        "image_urls",
+        "risk_flags",
+        "inference_notes",
+        "conflict_flags",
+    }
     dict_fields = {"ai_enrichment"}
     trim_options = [trim.value for trim in TrimType]
     C6_EXTERIOR_COLORS = [
-        "Arctic White", "Black", "Blade Silver", "Carbon Flash", "Carlisle Blue",
-        "Crystal Red", "Cyber Gray", "Daytona Sunset Orange", "Inferno Orange",
-        "Jetstream Blue", "LeMans Blue", "Machine Silver", "Magnetic Red",
-        "Millennium Yellow", "Monterey Red", "Night Race Blue", "Precision Red",
-        "Supersonic Blue", "Sunset Orange", "Torch Red", "Victory Red",
-        "Velocity Yellow", "Atomic Orange",
+        "Arctic White",
+        "Black",
+        "Blade Silver",
+        "Carbon Flash",
+        "Carlisle Blue",
+        "Crystal Red",
+        "Cyber Gray",
+        "Daytona Sunset Orange",
+        "Inferno Orange",
+        "Jetstream Blue",
+        "LeMans Blue",
+        "Machine Silver",
+        "Magnetic Red",
+        "Millennium Yellow",
+        "Monterey Red",
+        "Night Race Blue",
+        "Precision Red",
+        "Supersonic Blue",
+        "Sunset Orange",
+        "Torch Red",
+        "Victory Red",
+        "Velocity Yellow",
+        "Atomic Orange",
     ]
     C6_INTERIOR_COLORS = [
-        "Ebony", "Cashmere", "Titanium", "Cobalt Red", "Linen", "Red", "Steel Gray",
+        "Ebony",
+        "Cashmere",
+        "Titanium",
+        "Cobalt Red",
+        "Linen",
+        "Red",
+        "Steel Gray",
     ]
     color_options = {
         "exterior_color": C6_EXTERIOR_COLORS,
@@ -402,34 +527,83 @@ def render_app_shell() -> str:
     }
     color_hex_map_js = json.dumps(C6_COLOR_HEX, ensure_ascii=False)
     FIELD_LABELS = {
-        "id": "ID", "source": "Quelle", "source_listing_id": "Quellen-ID", "url": "URL",
-        "title": "Titel", "generation": "Generation", "model": "Modell",
-        "price_eur": "Preis (€)", "price_label": "Preis-Label", "mileage_km": "Kilometerstand",
-        "engine": "Motor", "probable_engine": "Motor (geschätzt)", "engine_confidence": "Motor-Konfidenz",
-        "engine_note": "Motor-Notiz", "power_hp": "Leistung (PS)", "estimated_power_hp": "Leistung (geschätzt)",
-        "power_note": "Leistungs-Notiz", "trim": "Ausstattung",
-        "model_year": "Modelljahr", "power_kw": "Leistung (kW)", "displacement_cc": "Hubraum (ccm)",
-        "drivetrain": "Antrieb", "condition": "Zustand", "owners_count": "Vorbesitzer",
-        "service_history": "Scheckheft gepflegt", "warranty": "Garantie",
-        "magnetic_ride": "Magnetic Ride (F55)", "active_exhaust": "Klappenauspuff (NPP)",
-        "head_up_display": "Head-Up-Display", "navigation": "Navigation", "bose_audio": "Bose-Sound",
-        "leather_interior": "Lederausstattung", "heated_seats": "Sitzheizung",
-        "first_registration": "Erstzulassung", "tuv_until": "TÜV bis",
-        "transmission": "Getriebe", "body_style": "Karosserie",
-        "exterior_color": "Außenfarbe", "interior_color": "Innenfarbe", "eu_spec": "EU-Spezifikation",
-        "equipment": "Ausstattung", "visual_flags": "Visuelle Merkmale", "ai_enrichment": "KI-Anreicherung",
-        "accident_status": "Unfallstatus", "damage": "Schaden", "has_damage": "Unfallschaden",
-        "location_raw": "Standort", "location_country": "Standortland", "origin_country": "Herkunftsland",
-        "origin_confidence": "Herkunfts-Konfidenz", "seller_type": "Verkäufer", "vin": "Fahrgestellnummer (VIN)",
-        "image_urls": "Bilder", "description_text": "Beschreibung",
-        "risk_flags": "Risiko-Flags", "inference_notes": "Inferenz-Notizen", "conflict_flags": "Konflikt-Flags",
-        "score": "Score", "change_type": "Änderungstyp", "previous_price_eur": "Vorheriger Preis",
-        "cluster_id": "Cluster", "validation_flags": "Validierungs-Flags", "hidden": "Ausgeblendet",
+        "id": "ID",
+        "source": "Quelle",
+        "source_listing_id": "Quellen-ID",
+        "url": "URL",
+        "title": "Titel",
+        "generation": "Generation",
+        "model": "Modell",
+        "price_eur": "Preis (€)",
+        "price_label": "Preis-Label",
+        "mileage_km": "Kilometerstand",
+        "engine": "Motor",
+        "probable_engine": "Motor (geschätzt)",
+        "engine_confidence": "Motor-Konfidenz",
+        "engine_note": "Motor-Notiz",
+        "power_hp": "Leistung (PS)",
+        "estimated_power_hp": "Leistung (geschätzt)",
+        "power_note": "Leistungs-Notiz",
+        "trim": "Ausstattung",
+        "model_year": "Modelljahr",
+        "power_kw": "Leistung (kW)",
+        "displacement_cc": "Hubraum (ccm)",
+        "drivetrain": "Antrieb",
+        "condition": "Zustand",
+        "owners_count": "Vorbesitzer",
+        "service_history": "Scheckheft gepflegt",
+        "warranty": "Garantie",
+        "magnetic_ride": "Magnetic Ride (F55)",
+        "active_exhaust": "Klappenauspuff (NPP)",
+        "head_up_display": "Head-Up-Display",
+        "navigation": "Navigation",
+        "bose_audio": "Bose-Sound",
+        "leather_interior": "Lederausstattung",
+        "heated_seats": "Sitzheizung",
+        "first_registration": "Erstzulassung",
+        "tuv_until": "TÜV bis",
+        "transmission": "Getriebe",
+        "body_style": "Karosserie",
+        "exterior_color": "Außenfarbe",
+        "interior_color": "Innenfarbe",
+        "eu_spec": "EU-Spezifikation",
+        "equipment": "Ausstattung",
+        "visual_flags": "Visuelle Merkmale",
+        "ai_enrichment": "KI-Anreicherung",
+        "accident_status": "Unfallstatus",
+        "damage": "Schaden",
+        "has_damage": "Unfallschaden",
+        "location_raw": "Standort",
+        "location_country": "Standortland",
+        "origin_country": "Herkunftsland",
+        "origin_confidence": "Herkunfts-Konfidenz",
+        "seller_type": "Verkäufer",
+        "vin": "Fahrgestellnummer (VIN)",
+        "image_urls": "Bilder",
+        "description_text": "Beschreibung",
+        "risk_flags": "Risiko-Flags",
+        "inference_notes": "Inferenz-Notizen",
+        "conflict_flags": "Konflikt-Flags",
+        "score": "Score",
+        "change_type": "Änderungstyp",
+        "previous_price_eur": "Vorheriger Preis",
+        "cluster_id": "Cluster",
+        "validation_flags": "Validierungs-Flags",
+        "hidden": "Ausgeblendet",
     }
     month_fields = {"first_registration", "tuv_until"}
     enum_options = {
-        "transmission": [("manual", "Schalter"), ("automatic", "Automatik"), ("unknown", "Unbekannt")],
-        "body_style": [("Cabrio", "Cabrio"), ("Coupé", "Coupé"), ("Targa", "Targa"), ("unknown", "Unbekannt")],
+        "transmission": [
+            ("manual", "Schalter"),
+            ("automatic", "Automatik"),
+            ("unknown", "Unbekannt"),
+        ],
+        "body_style": [
+            ("Cabrio", "Cabrio"),
+            ("Coupé", "Coupé"),
+            ("Targa", "Targa"),
+            ("unknown", "Unbekannt"),
+        ],
     }
     field_registry = [
         {
@@ -437,25 +611,82 @@ def render_app_shell() -> str:
             "label": FIELD_LABELS.get(field.name, field.name),
             "editable": field.name in EDITABLE_FIELDS,
             "protected": field.name in PROTECTED_OVERRIDE_FIELDS,
-            "kind": "month" if field.name in month_fields else "select" if field.name == "trim" or field.name in enum_options else "number" if field.name in numeric_fields else "boolean" if field.name in boolean_fields else "list" if field.name in list_fields else "json" if field.name in dict_fields else "text",
-            "options": trim_options if field.name == "trim" else [o for o, _ in enum_options[field.name]] if field.name in enum_options else None,
-            "option_labels": [l for _, l in enum_options[field.name]] if field.name in enum_options else None,
+            "kind": "month"
+            if field.name in month_fields
+            else "select"
+            if field.name == "trim" or field.name in enum_options
+            else "number"
+            if field.name in numeric_fields
+            else "boolean"
+            if field.name in boolean_fields
+            else "list"
+            if field.name in list_fields
+            else "json"
+            if field.name in dict_fields
+            else "text",
+            "options": trim_options
+            if field.name == "trim"
+            else [o for o, _ in enum_options[field.name]]
+            if field.name in enum_options
+            else None,
+            "option_labels": [l for _, l in enum_options[field.name]]
+            if field.name in enum_options
+            else None,
             "color_options": color_options.get(field.name),
         }
         for field in fields(Listing)
     ]
     EDITOR_PRIORITY = [
-        "price_eur", "price_label", "mileage_km", "title", "model", "model_year",
-        "trim", "transmission", "body_style", "engine", "power_hp", "power_kw",
-        "displacement_cc", "drivetrain", "exterior_color", "interior_color",
-        "first_registration", "tuv_until", "condition", "owners_count",
-        "service_history", "warranty", "magnetic_ride", "active_exhaust",
-        "head_up_display", "navigation", "bose_audio", "leather_interior",
-        "heated_seats", "eu_spec", "accident_status", "damage", "has_damage",
-        "seller_type", "vin", "location_raw", "location_country", "origin_country",
-        "equipment", "visual_flags", "description_text", "hidden",
+        "price_eur",
+        "price_label",
+        "mileage_km",
+        "title",
+        "model",
+        "model_year",
+        "trim",
+        "transmission",
+        "body_style",
+        "engine",
+        "power_hp",
+        "power_kw",
+        "displacement_cc",
+        "drivetrain",
+        "exterior_color",
+        "interior_color",
+        "first_registration",
+        "tuv_until",
+        "condition",
+        "owners_count",
+        "service_history",
+        "warranty",
+        "magnetic_ride",
+        "active_exhaust",
+        "head_up_display",
+        "navigation",
+        "bose_audio",
+        "leather_interior",
+        "heated_seats",
+        "eu_spec",
+        "accident_status",
+        "damage",
+        "has_damage",
+        "seller_type",
+        "vin",
+        "location_raw",
+        "location_country",
+        "origin_country",
+        "equipment",
+        "visual_flags",
+        "description_text",
+        "hidden",
     ]
-    field_registry.sort(key=lambda f: EDITOR_PRIORITY.index(f["name"]) if f["name"] in EDITOR_PRIORITY else len(EDITOR_PRIORITY))
+    field_registry.sort(
+        key=lambda f: (
+            EDITOR_PRIORITY.index(str(f["name"]))
+            if f["name"] in EDITOR_PRIORITY
+            else len(EDITOR_PRIORITY)
+        )
+    )
     field_registry_attr = html.escape(json.dumps(field_registry, ensure_ascii=False), quote=True)
     field_registry_js = json.dumps(field_registry, ensure_ascii=False)
     return f"""<!doctype html>
@@ -1451,23 +1682,30 @@ def _start_scheduler(app: TrackerWebApp, interval_seconds: int) -> None:
 def _start_health_scheduler(app: TrackerWebApp, interval_seconds: int) -> None:
     """Background thread that periodically checks offer URLs for online status."""
 
-    _RETRIABLE_SQLITE_ERRORS = ("database is locked", "is not unique",
-                                "UNIQUE constraint", "no such table")
+    _RETRIABLE_SQLITE_ERRORS = (
+        "database is locked",
+        "is not unique",
+        "UNIQUE constraint",
+        "no such table",
+    )
 
     def _robust_check() -> None:
         for attempt in range(3):
             try:
                 summary = check_stale_offers(app.store)
-                print(f"Health check: {summary['checked']} checked, {summary['skipped']} skipped, "
-                      f"{summary['online']} online, {summary['offline']} offline, "
-                      f"{summary['failed']} failed, {summary['total']} total")
+                print(
+                    f"Health check: {summary['checked']} checked, {summary['skipped']} skipped, "
+                    f"{summary['online']} online, {summary['offline']} offline, "
+                    f"{summary['failed']} failed, {summary['total']} total"
+                )
                 return
             except Exception as exc:
                 msg = str(exc)
                 if any(e in msg for e in _RETRIABLE_SQLITE_ERRORS) and attempt < 2:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                     continue
                 import traceback
+
                 traceback.print_exc()
                 print(f"Scheduled health check failed (attempt {attempt + 1}): {exc}")
 
@@ -1483,20 +1721,30 @@ def main() -> int:
     host = os.getenv("CORVETTE_TRACKER_HOST", "0.0.0.0")
     port = int(os.getenv("PORT", os.getenv("CORVETTE_TRACKER_PORT", "8096")))
     output_dir = Path(os.getenv("CORVETTE_TRACKER_OUTPUT_DIR", "/app/runtime"))
-    database_path = Path(os.getenv("CORVETTE_TRACKER_DATABASE", str(output_dir / "data" / "corvette_tracker.sqlite")))
+    database_path = Path(
+        os.getenv("CORVETTE_TRACKER_DATABASE", str(output_dir / "data" / "corvette_tracker.sqlite"))
+    )
     configured_path = os.getenv("CORVETTE_TRACKER_CONFIG", "/app/config.yaml")
     config_path = Path(configured_path) if configured_path else output_dir / "config.yaml"
 
     from .cli import run_tracker
 
     def run_callback() -> tuple[int, dict[str, Any]]:
-        return run_tracker(str(config_path) if config_path.exists() else None, output_dir=output_dir, database=database_path)
+        return run_tracker(
+            str(config_path) if config_path.exists() else None,
+            output_dir=output_dir,
+            database=database_path,
+        )
 
     store = TrackerStore(database_path)
-    app = TrackerWebApp(store=store, output_dir=output_dir, run_callback=run_callback, config_path=config_path)
+    app = TrackerWebApp(
+        store=store, output_dir=output_dir, run_callback=run_callback, config_path=config_path
+    )
 
     if os.getenv("CORVETTE_TRACKER_RUN_ON_START", "true").lower() in {"1", "true", "yes", "on"}:
-        threading.Thread(target=app.run_once, name="corvette-tracker-initial-run", daemon=True).start()
+        threading.Thread(
+            target=app.run_once, name="corvette-tracker-initial-run", daemon=True
+        ).start()
 
     interval = parse_interval_seconds(os.getenv("CORVETTE_TRACKER_CRON_INTERVAL", "6h"))
     if interval is not None:
