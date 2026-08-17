@@ -1166,6 +1166,7 @@ function renderOverviewPage() {{
   const scoreMin = parseInt(document.getElementById('score-min').value) || 0;
   const hideRisk = document.getElementById('hide-risk').checked;
   
+  myScoreMap = computeMyScores(currentListings);
   let filtered = currentListings.filter(item => {{
     // Status filter
     if (statusFilter !== 'all') {{
@@ -1209,7 +1210,7 @@ function renderOverviewPage() {{
     if (kmMin > 0 && (item.mileage_km == null || item.mileage_km < kmMin)) return false;
     if (kmMax > 0 && (item.mileage_km == null || item.mileage_km > kmMax)) return false;
     // Score minimum
-    if (scoreMin > 0 && (item.score == null || item.score < scoreMin)) return false;
+    if (scoreMin > 0 && (myScoreMap.get(item.id) ?? 0) < scoreMin) return false;
     // Hide risk — skip items with any risk_flag
     if (hideRisk && item.risk_flags && item.risk_flags.length > 0) return false;
     return true;
@@ -1217,7 +1218,6 @@ function renderOverviewPage() {{
   
   const groups = groupListings(filtered);
   const primaries = groups.map(g => g.primary);
-  myScoreMap = computeMyScores(primaries);
   const sortedPrimaries = sortListings(primaries);
   const groupByPrimaryId = new Map(groups.map(g => [g.primary.id, g]));
   grid.innerHTML = sortedPrimaries.map(item => {{
