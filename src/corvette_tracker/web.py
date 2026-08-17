@@ -682,7 +682,7 @@ function sortListings(listings) {{
     if (order === 'created-desc') return (b.created_at || '').localeCompare(a.created_at || '');
     if (order === 'created-asc') return (a.created_at || '').localeCompare(b.created_at || '');
     if (order === 'source') return (a.source || '').localeCompare(b.source || '');
-    return Number(b.score || 0) - Number(a.score || 0);
+    return (myScoreMap.get(b.id) ?? 0) - (myScoreMap.get(a.id) ?? 0);
   }});
 }}
 function groupListings(listings) {{
