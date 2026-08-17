@@ -736,7 +736,7 @@ function renderOverviewCard(item, group) {{
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}" data-status="${{st}}">
     <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{badgeScore}}</span>${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
     <div class="body">
-      <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}} &middot; Score ${{esc(item.score)}}</p>
+      <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}}</p>
       ${{extraBadge}}
       <h2><a class="title-link" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer">${{esc(item.title)}}</a></h2>
       <p class="price">${{fmtEur(item.price_eur)}}</p>
