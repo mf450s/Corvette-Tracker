@@ -17,7 +17,7 @@ DETAIL_IMAGE_RULE = "$_59.AUTO"
 
 
 def _text(node) -> str:
-    return " ".join(node.get_text(" ", strip=True).split()) if node else ""
+    return " ".join(str(node.get_text(" ", strip=True)).split()) if node else ""
 
 
 def normalize_kleinanzeigen_image_url(url: str) -> str:
@@ -46,10 +46,20 @@ def parse_kleinanzeigen_detail_images(html: str, base_url: str) -> list[str]:
             value = img.get(attr)
             if not value:
                 continue
-            candidates.extend(re.findall(r"https://img\.kleinanzeigen\.de/api/v1/prod-ads/images/[^\s,\"'<>;)]+", value))
+            candidates.extend(
+                re.findall(
+                    r"https://img\.kleinanzeigen\.de/api/v1/prod-ads/images/[^\s,\"'<>;)]+",
+                    str(value),
+                )
+            )
 
     for script in soup.select("script"):
-        candidates.extend(re.findall(r"https://img\.kleinanzeigen\.de/api/v1/prod-ads/images/[^\s,\"'<>;)]+", script.get_text(" ", strip=False)))
+        candidates.extend(
+            re.findall(
+                r"https://img\.kleinanzeigen\.de/api/v1/prod-ads/images/[^\s,\"'<>;)]+",
+                script.get_text(" ", strip=False),
+            )
+        )
 
     normalized: list[str] = []
     seen_base_ids: set[str] = set()
@@ -99,7 +109,7 @@ def _split_detail_label_value(node) -> tuple[str, str] | None:
         "Modell",
     ):
         if text.lower().startswith(label.lower()):
-            value = text[len(label):].strip()
+            value = text[len(label) :].strip()
             if value:
                 return label, value
     return None
@@ -184,29 +194,43 @@ def _merge_detail_facts(listing: Listing, detail_html: str) -> Listing:
 
     listing.model = detail_listing.model or listing.model
     listing.risk_flags = list(dict.fromkeys([*listing.risk_flags, *detail_listing.risk_flags]))
-    listing.inference_notes = list(dict.fromkeys([*listing.inference_notes, *detail_listing.inference_notes]))
-    listing.conflict_flags = list(dict.fromkeys([*listing.conflict_flags, *detail_listing.conflict_flags]))
+    listing.inference_notes = list(
+        dict.fromkeys([*listing.inference_notes, *detail_listing.inference_notes])
+    )
+    listing.conflict_flags = list(
+        dict.fromkeys([*listing.conflict_flags, *detail_listing.conflict_flags])
+    )
     return apply_score(listing)
 
 
 def _listing_id_from_url(url: str, fallback: str) -> str:
     match = re.search(r"/(\d+)-216-", url)
-    return match.group(1) if match else fallback
+    return str(match.group(1)) if match else fallback
 
 
 def _fallback_listing_segments(html_text: str, base_url: str) -> list[Listing]:
-    matches = list(re.finditer(r'<h2[^>]*>\s*<a[^>]+href=["\']([^"\']*/s-anzeige/[^"\']+)["\'][^>]*>(.*?)</a>\s*</h2>', html_text, flags=re.I | re.S))
+    matches = list(
+        re.finditer(
+            r'<h2[^>]*>\s*<a[^>]+href=["\']([^"\']*/s-anzeige/[^"\']+)["\'][^>]*>(.*?)</a>\s*</h2>',
+            html_text,
+            flags=re.I | re.S,
+        )
+    )
     listings: list[Listing] = []
     for index, match in enumerate(matches):
         href = html.unescape(match.group(1))
         title = BeautifulSoup(match.group(2), "html.parser").get_text(" ", strip=True)
         if not title:
             continue
-        end = matches[index + 1].start() if index + 1 < len(matches) else min(len(html_text), match.end() + 3000)
-        segment = html_text[match.start():end]
+        end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else min(len(html_text), match.end() + 3000)
+        )
+        segment = html_text[match.start() : end]
         segment_soup = BeautifulSoup(segment, "html.parser")
         text = _text(segment_soup)
-        url = urljoin(base_url, href)
+        url = urljoin(base_url, str(href))
         listing = normalize_listing(
             source=SOURCE,
             source_listing_id=_listing_id_from_url(url, f"ka-fallback-{index}"),
@@ -224,19 +248,23 @@ def _fallback_listing_segments(html_text: str, base_url: str) -> list[Listing]:
 
 def parse_kleinanzeigen_search(html_text: str, base_url: str = DEFAULT_URL) -> list[Listing]:
     soup = BeautifulSoup(html_text, "html.parser")
-    articles = soup.select("article.aditem") or soup.select("article") or soup.select("li.ad-listitem")
+    articles = (
+        soup.select("article.aditem") or soup.select("article") or soup.select("li.ad-listitem")
+    )
     listings: list[Listing] = []
     for index, article in enumerate(articles):
         text = _text(article)
         if "corvette" not in text.lower() and "c6" not in text.lower():
             continue
         title_node = article.select_one("h2")
-        link = article.select_one('h2 a[href*="/s-anzeige/"]') or article.select_one('a[href*="/s-anzeige/"]')
+        link = article.select_one('h2 a[href*="/s-anzeige/"]') or article.select_one(
+            'a[href*="/s-anzeige/"]'
+        )
         href = article.get("data-href") or (link.get("href") if link else None)
         if not href:
             continue
         title = _text(title_node) or _text(link) or text[:120]
-        url = urljoin(base_url, href)
+        url = urljoin(base_url, str(href))
         source_id = article.get("data-adid") or article.get("id") or f"ka-{index}"
         price_node = article.select_one('[class*="price"]')
         desc_node = article.select_one('[class*="description"]')
@@ -261,11 +289,13 @@ def parse_kleinanzeigen_pagination_urls(html_text: str, base_url: str) -> list[s
     soup = BeautifulSoup(html_text, "html.parser")
     base_host = urlparse(base_url).netloc
     urls: list[str] = []
-    for link in soup.select('a[href*="/s-autos/"][href*="seite:"], link[href*="/s-autos/"][href*="seite:"]'):
+    for link in soup.select(
+        'a[href*="/s-autos/"][href*="seite:"], link[href*="/s-autos/"][href*="seite:"]'
+    ):
         href = link.get("href")
         if not href:
             continue
-        url = urljoin(base_url, href)
+        url = urljoin(base_url, str(href))
         parsed = urlparse(url)
         if parsed.netloc == base_host and "/s-anzeige/" not in parsed.path:
             urls.append(url)
@@ -299,11 +329,13 @@ def fetch_kleinanzeigen(url: str = DEFAULT_URL) -> list[Listing]:
         except Exception:
             continue
 
-    listings = _dedupe_listings([
-        listing
-        for page_url, html in html_by_url.items()
-        for listing in parse_kleinanzeigen_search(html, page_url)
-    ])
+    listings = _dedupe_listings(
+        [
+            listing
+            for page_url, html in html_by_url.items()
+            for listing in parse_kleinanzeigen_search(html, page_url)
+        ]
+    )
     for listing in listings:
         try:
             detail_html = fetch_html(listing.url)

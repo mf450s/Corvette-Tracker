@@ -16,7 +16,7 @@ HIGH_RES_IMAGE_VARIANT = "1920x1080.webp"
 
 
 def _text(node) -> str:
-    return " ".join(node.get_text(" ", strip=True).split()) if node else ""
+    return " ".join(str(node.get_text(" ", strip=True)).split()) if node else ""
 
 
 def normalize_autoscout24_image_url(url: str) -> str:
@@ -59,21 +59,39 @@ def _parse_next_data(soup: BeautifulSoup, base_url: str) -> list[Listing]:
         return []
     page_props = data.get("props", {}).get("pageProps", {})
     detail_listing = page_props.get("listingDetails")
-    raw_listings = [detail_listing] if isinstance(detail_listing, dict) else page_props.get("listings", []) or []
+    raw_listings = (
+        [detail_listing]
+        if isinstance(detail_listing, dict)
+        else page_props.get("listings", []) or []
+    )
     listings: list[Listing] = []
     for raw in raw_listings:
         vehicle = raw.get("vehicle") or {}
         details = " ".join(
-            " ".join(str(value).strip() for value in ((item or {}).get("label"), (item or {}).get("data")) if str(value or "").strip())
+            " ".join(
+                str(value).strip()
+                for value in ((item or {}).get("label"), (item or {}).get("data"))
+                if str(value or "").strip()
+            )
             for item in raw.get("vehicleDetails", []) or []
         )
-        title_parts = [vehicle.get("make") or "Chevrolet", vehicle.get("model") or "Corvette", vehicle.get("modelVersionInput") or ""]
+        title_parts = [
+            vehicle.get("make") or "Chevrolet",
+            vehicle.get("model") or "Corvette",
+            vehicle.get("modelVersionInput") or "",
+        ]
         title = " ".join(str(part).strip() for part in title_parts if str(part or "").strip())
         price = raw.get("price") or {}
         location = raw.get("location") or {}
-        location_raw = " ".join(str(x).strip() for x in [location.get("zip"), location.get("city")] if str(x or "").strip())
+        location_raw = " ".join(
+            str(x).strip()
+            for x in [location.get("zip"), location.get("city")]
+            if str(x or "").strip()
+        )
         url = urljoin(base_url, raw.get("url") or raw.get("webPage") or "")
-        vehicle_values = " ".join(str(value) for value in vehicle.values() if isinstance(value, str | int | float))
+        vehicle_values = " ".join(
+            str(value) for value in vehicle.values() if isinstance(value, str | int | float)
+        )
         description = " ".join([title, details, vehicle_values, location_raw])
         listing = normalize_listing(
             source=SOURCE,
@@ -83,7 +101,11 @@ def _parse_next_data(soup: BeautifulSoup, base_url: str) -> list[Listing]:
             description=description,
             price_text=str(price.get("priceFormatted") or price.get("priceRaw") or ""),
             location_raw=location_raw,
-            image_urls=[normalize_autoscout24_image_url(str(image)) for image in (raw.get("images") or []) if image],
+            image_urls=[
+                normalize_autoscout24_image_url(str(image))
+                for image in (raw.get("images") or [])
+                if image
+            ],
         )
         if listing:
             if price.get("priceRaw"):
@@ -110,11 +132,24 @@ def parse_autoscout24_search(html: str, base_url: str = DEFAULT_URL) -> list[Lis
             continue
         title_node = article.select_one("h2, a")
         title = _text(title_node) or text[:120]
-        source_id = article.get("id") or article.get("data-guid") or article.get("data-id") or f"as24-{index}"
+        source_id = (
+            article.get("id")
+            or article.get("data-guid")
+            or article.get("data-id")
+            or f"as24-{index}"
+        )
         price_node = article.find(string=lambda s: bool(s and "€" in s))
         price_text = str(price_node or text)
         location = ""
-        for token in ("München", "Hamburg", "Berlin", "Köln", "Düsseldorf", "Stuttgart", "Frankfurt"):
+        for token in (
+            "München",
+            "Hamburg",
+            "Berlin",
+            "Köln",
+            "Düsseldorf",
+            "Stuttgart",
+            "Frankfurt",
+        ):
             if token.lower() in text.lower():
                 location = token
                 break

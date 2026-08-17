@@ -5,8 +5,6 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from corvette_tracker.cli import run_hide, run_scrape, run_unhide
 from corvette_tracker.models import Listing
 from corvette_tracker.storage import TrackerStore
@@ -14,17 +12,26 @@ from corvette_tracker.storage import TrackerStore
 
 def test_cli_run_with_fixture_writes_site_and_exports(tmp_path: Path):
     fixture = tmp_path / "sample.html"
-    fixture.write_text('''
+    fixture.write_text("""
     <article data-testid="list-item" id="as24-1">
       <a href="/angebote/corvette-c6-z06">Chevrolet Corvette C6 Z06 LS7</a>
       <img src="https://img.example/c6.jpg" />
       <p>59.900 €</p><p>72.000 km</p><p>05/2008</p><p>512 PS</p><p>München</p>
       <span>unfallfrei HU 06/2027</span>
     </article>
-    ''')
+    """)
 
     result = subprocess.run(
-        [sys.executable, "-m", "corvette_tracker.cli", "run", "--fixture", str(fixture), "--output-dir", str(tmp_path)],
+        [
+            sys.executable,
+            "-m",
+            "corvette_tracker.cli",
+            "run",
+            "--fixture",
+            str(fixture),
+            "--output-dir",
+            str(tmp_path),
+        ],
         text=True,
         capture_output=True,
         check=True,
@@ -219,25 +226,33 @@ def test_cli_hide_and_unhide_roundtrip(tmp_path: Path) -> None:
     store.upsert_listings([listing])
 
     # Hide via CLI
-    exit_code = run_hide(Namespace(
-        listing_id="hide_test_001",
-        database=str(db),
-        config=None,
-        output_dir=None,
-    ))
+    exit_code = run_hide(
+        Namespace(
+            listing_id="hide_test_001",
+            database=str(db),
+            config=None,
+            output_dir=None,
+        )
+    )
     assert exit_code == 0
 
-    row = store.conn.execute("SELECT hidden FROM listings WHERE id = ?", ("hide_test_001",)).fetchone()
+    row = store.conn.execute(
+        "SELECT hidden FROM listings WHERE id = ?", ("hide_test_001",)
+    ).fetchone()
     assert row["hidden"] == 1
 
     # Unhide via CLI
-    exit_code = run_unhide(Namespace(
-        listing_id="hide_test_001",
-        database=str(db),
-        config=None,
-        output_dir=None,
-    ))
+    exit_code = run_unhide(
+        Namespace(
+            listing_id="hide_test_001",
+            database=str(db),
+            config=None,
+            output_dir=None,
+        )
+    )
     assert exit_code == 0
 
-    row = store.conn.execute("SELECT hidden FROM listings WHERE id = ?", ("hide_test_001",)).fetchone()
+    row = store.conn.execute(
+        "SELECT hidden FROM listings WHERE id = ?", ("hide_test_001",)
+    ).fetchone()
     assert row["hidden"] == 0

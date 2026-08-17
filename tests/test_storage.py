@@ -52,9 +52,7 @@ def test_update_listing_url_noop_when_same(tmp_path: Path):
     store = TrackerStore(tmp_path / "tracker.sqlite")
     store.upsert_listings([make_listing()])
 
-    changed = store.update_listing_url(
-        "autoscout24_123", "https://example.test/listing/123"
-    )
+    changed = store.update_listing_url("autoscout24_123", "https://example.test/listing/123")
     assert changed is False
 
 
@@ -124,7 +122,9 @@ def test_online_status_history_records_transitions_only(tmp_path: Path):
     # Same status -> no new row
     store.update_online_status("autoscout24_123", is_online=True, http_status=200)
     # Transition -> new row
-    store.update_online_status("autoscout24_123", is_online=False, http_status=404, error_message="Gone")
+    store.update_online_status(
+        "autoscout24_123", is_online=False, http_status=404, error_message="Gone"
+    )
     # Same status -> no new row
     store.update_online_status("autoscout24_123", is_online=False, http_status=410)
 
@@ -211,7 +211,9 @@ def test_update_online_status_upserts_instead_of_duplicating(tmp_path: Path):
     store.upsert_listings([make_listing()])
 
     store.update_online_status("autoscout24_123", is_online=True)
-    store.update_online_status("autoscout24_123", is_online=False, http_status=404, error_message="Not found")
+    store.update_online_status(
+        "autoscout24_123", is_online=False, http_status=404, error_message="Not found"
+    )
 
     rows = store.list_online_statuses()
     assert len(rows) == 1  # still one row

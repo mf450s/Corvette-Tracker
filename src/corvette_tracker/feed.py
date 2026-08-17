@@ -100,7 +100,10 @@ def _average(values: list[int]) -> int | None:
 
 def _distribution(items: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
     counts = Counter(str(item.get(key) or "k.A.") for item in items)
-    return [{"label": label, "count": count} for label, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))]
+    return [
+        {"label": label, "count": count}
+        for label, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
+    ]
 
 
 def render_gallery(images: list[str], title: str) -> str:
@@ -119,14 +122,18 @@ def build_feed_payload(listings: list[Listing], *, show_hidden: bool = False) ->
     ordered = sorted(listings, key=lambda item: (item.score, item.price_eur or 0), reverse=True)
     listing_dicts = [item.to_dict() for item in ordered]
     prices = [int(item["price_eur"]) for item in listing_dicts if item.get("price_eur") is not None]
-    mileages = [int(item["mileage_km"]) for item in listing_dicts if item.get("mileage_km") is not None]
+    mileages = [
+        int(item["mileage_km"]) for item in listing_dicts if item.get("mileage_km") is not None
+    ]
     generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
     return {
         "generated_at": generated_at,
         "summary": {
             "total_active": len(ordered),
             "new_listings": sum(1 for item in ordered if item.change_type == "new"),
-            "changed_listings": sum(1 for item in ordered if item.change_type not in {"new", "unchanged"}),
+            "changed_listings": sum(
+                1 for item in ordered if item.change_type not in {"new", "unchanged"}
+            ),
             "price_changes": sum(1 for item in ordered if item.change_type == "price_change"),
             "risk_warnings": sum(1 for item in ordered if item.risk_flags),
             "avg_price_eur": _average(prices),
@@ -211,11 +218,17 @@ def render_html_site(payload: dict[str, Any]) -> str:
         image = html.escape((images or [""])[0])
         risk_flags = item.get("risk_flags") or []
         risk = ", ".join(risk_flags) or "keine"
-        img_html = f'<img src="{image}" alt="{title}" loading="lazy">' if image else '<div class="placeholder">Kein Bild</div>'
+        img_html = (
+            f'<img src="{image}" alt="{title}" loading="lazy">'
+            if image
+            else '<div class="placeholder">Kein Bild</div>'
+        )
         gallery_html = render_gallery(images, title)
         engine_text = html.escape(engine_display(item))
         engine_note = engine_note_display(item)
-        engine_note_html = f'<p class="engine-note">{html.escape(engine_note)}</p>' if engine_note else ""
+        engine_note_html = (
+            f'<p class="engine-note">{html.escape(engine_note)}</p>' if engine_note else ""
+        )
         equipment_html = ""
         if item.get("equipment"):
             equipment_html = f'<p class="ai-line"><strong>Ausstattung (AI):</strong> {html.escape(", ".join(item.get("equipment") or []))}</p>'
@@ -223,43 +236,53 @@ def render_html_site(payload: dict[str, Any]) -> str:
         if item.get("visual_flags"):
             visual_flags_html = f'<p class="ai-line"><strong>Visuelle Hinweise:</strong> {html.escape(", ".join(item.get("visual_flags") or []))}</p>'
         ai_summary = ai_summary_display(item)
-        ai_html = f'<p class="ai-line"><strong>AI-Auswertung:</strong> {html.escape(ai_summary)}</p>' if ai_summary else ""
+        ai_html = (
+            f'<p class="ai-line"><strong>AI-Auswertung:</strong> {html.escape(ai_summary)}</p>'
+            if ai_summary
+            else ""
+        )
         inference_html = ""
         if item.get("inference_notes"):
-            inference_items = "".join(f"<li>{html.escape(str(note))}</li>" for note in item.get("inference_notes") or [])
+            inference_items = "".join(
+                f"<li>{html.escape(str(note))}</li>" for note in item.get("inference_notes") or []
+            )
             inference_html = f'<div class="inference-line"><strong>Vermutungen</strong><ul>{inference_items}</ul></div>'
         conflict_html = ""
         if item.get("conflict_flags"):
-            conflict_items = "".join(f"<li>{html.escape(str(flag))}</li>" for flag in item.get("conflict_flags") or [])
+            conflict_items = "".join(
+                f"<li>{html.escape(str(flag))}</li>" for flag in item.get("conflict_flags") or []
+            )
             conflict_html = f'<div class="conflict-line"><strong>Konflikte</strong><ul>{conflict_items}</ul></div>'
         per_1000 = price_per_1000_km(item)
-        description = html.escape(str(item.get("description_text") or "Keine Beschreibung aus der Quelle."))
+        description = html.escape(
+            str(item.get("description_text") or "Keine Beschreibung aus der Quelle.")
+        )
         cards.append(f'''
-        <article class="card" data-listing-card data-source="{_attr(item.get('source'))}" data-trim="{_attr(item.get('trim') or 'k.A.')}" data-risk="{'yes' if risk_flags else 'no'}" data-price="{_attr(item.get('price_eur'))}" data-mileage="{_attr(item.get('mileage_km'))}" data-score="{_attr(item.get('score'))}">
-          <div class="score-badge">{html.escape(str(item.get('score', 0)))}%</div>
-          <a class="image" href="{html.escape(item['url'])}" target="_blank" rel="noreferrer">{img_html}</a>
+        <article class="card" data-listing-card data-source="{_attr(item.get("source"))}" data-trim="{_attr(item.get("trim") or "k.A.")}" data-risk="{"yes" if risk_flags else "no"}" data-price="{_attr(item.get("price_eur"))}" data-mileage="{_attr(item.get("mileage_km"))}" data-score="{_attr(item.get("score"))}">
+          <div class="score-badge">{html.escape(str(item.get("score", 0)))}%</div>
+          <a class="image" href="{html.escape(item["url"])}" target="_blank" rel="noreferrer">{img_html}</a>
           {gallery_html}
           <div class="card-body">
-            <div class="meta"><span>{html.escape(str(item.get('source') or 'Quelle'))}</span><span>Score {html.escape(str(item.get('score', 0)))}</span></div>
+            <div class="meta"><span>{html.escape(str(item.get("source") or "Quelle"))}</span><span>Score {html.escape(str(item.get("score", 0)))}</span></div>
             <h2>{title}</h2>
             <p class="price">{html.escape(price_display(item))}</p>
-            <div class="quick-specs"><span>{format_km(item.get('mileage_km'))}</span><span>{engine_text}</span><span>{html.escape(variant_display(item))}</span><span>{html.escape(transmission_display(item))}</span></div>
+            <div class="quick-specs"><span>{format_km(item.get("mileage_km"))}</span><span>{engine_text}</span><span>{html.escape(variant_display(item))}</span><span>{html.escape(transmission_display(item))}</span></div>
             {engine_note_html}
             <details class="listing-details">
               <summary>Details ansehen</summary>
               <dl>
-                <div><dt>Preis / 1.000 km</dt><dd>{format_eur(per_1000) if per_1000 is not None else 'k.A.'}</dd></div>
+                <div><dt>Preis / 1.000 km</dt><dd>{format_eur(per_1000) if per_1000 is not None else "k.A."}</dd></div>
                 <div><dt>Motor</dt><dd>{engine_text}</dd></div>
                 <div><dt>PS</dt><dd>{html.escape(power_display(item))}</dd></div>
-                <div><dt>km</dt><dd>{format_km(item.get('mileage_km'))}</dd></div>
+                <div><dt>km</dt><dd>{format_km(item.get("mileage_km"))}</dd></div>
                 <div><dt>Variante</dt><dd>{html.escape(variant_display(item))}</dd></div>
                 <div><dt>Getriebe</dt><dd>{html.escape(transmission_display(item))}</dd></div>
-                <div><dt>Karosserie</dt><dd>{html.escape(str(item.get('body_style') or 'k.A.'))}</dd></div>
-                <div><dt>EZ</dt><dd>{html.escape(str(item.get('first_registration') or 'k.A.'))}</dd></div>
-                <div><dt>TÜV</dt><dd>{html.escape(str(item.get('tuv_until') or 'k.A.'))}</dd></div>
-                <div><dt>Ort</dt><dd>{html.escape(str(item.get('location_raw') or 'k.A.'))}</dd></div>
-                <div><dt>Unfallstatus</dt><dd>{html.escape(str(item.get('accident_status') or 'unbekannt'))}</dd></div>
-                <div><dt>Änderung</dt><dd>{html.escape(str(item.get('change_type') or 'unbekannt'))}</dd></div>
+                <div><dt>Karosserie</dt><dd>{html.escape(str(item.get("body_style") or "k.A."))}</dd></div>
+                <div><dt>EZ</dt><dd>{html.escape(str(item.get("first_registration") or "k.A."))}</dd></div>
+                <div><dt>TÜV</dt><dd>{html.escape(str(item.get("tuv_until") or "k.A."))}</dd></div>
+                <div><dt>Ort</dt><dd>{html.escape(str(item.get("location_raw") or "k.A."))}</dd></div>
+                <div><dt>Unfallstatus</dt><dd>{html.escape(str(item.get("accident_status") or "unbekannt"))}</dd></div>
+                <div><dt>Änderung</dt><dd>{html.escape(str(item.get("change_type") or "unbekannt"))}</dd></div>
               </dl>
               <p class="description">{description}</p>
               {f'<p class="engine-note">{html.escape(str(item.get("power_note")))}</p>' if item.get("power_note") else ""}
@@ -270,26 +293,65 @@ def render_html_site(payload: dict[str, Any]) -> str:
               {conflict_html}
               <p class="risk">Risiko: {html.escape(risk)}</p>
             </details>
-            <a class="button" href="{html.escape(item['url'])}" target="_blank" rel="noreferrer">Angebot öffnen</a>
+            <a class="button" href="{html.escape(item["url"])}" target="_blank" rel="noreferrer">Angebot öffnen</a>
           </div>
         </article>
         ''')
-    cards_html = "\n".join(cards) or '<p class="empty">Keine Angebote gefunden. Prüfe Quellen/Netzwerk oder nutze Fixture-Daten.</p>'
+    cards_html = (
+        "\n".join(cards)
+        or '<p class="empty">Keine Angebote gefunden. Prüfe Quellen/Netzwerk oder nutze Fixture-Daten.</p>'
+    )
     warnings = payload.get("warnings") or []
     warnings_html = ""
     if warnings:
         warning_items = "".join(f"<li>{html.escape(str(warning))}</li>" for warning in warnings)
-        warnings_html = f'<section class="warnings"><h2>Quellen-Hinweise</h2><ul>{warning_items}</ul></section>'
+        warnings_html = (
+            f'<section class="warnings"><h2>Quellen-Hinweise</h2><ul>{warning_items}</ul></section>'
+        )
     summary = payload["summary"]
-    source_options = "".join(f'<option value="{html.escape(row["label"])}">{html.escape(row["label"])} ({row["count"]})</option>' for row in summary.get("sources", []))
-    trim_options = "".join(f'<option value="{html.escape(row["label"])}">{html.escape(row["label"])} ({row["count"]})</option>' for row in summary.get("trims", []))
-    chart_json = html.escape(json.dumps({"sources": summary.get("sources", []), "trims": summary.get("trims", [])}, ensure_ascii=False), quote=True)
-    metrics_html = "".join([
-        _metric("Aktive Treffer", str(summary["total_active"]), f'{summary["new_listings"]} neu', "count"),
-        _metric("Ø Preis", format_eur(summary.get("avg_price_eur")), f'Median {format_eur(summary.get("median_price_eur"))}', "price"),
-        _metric("Ø Laufleistung", format_km(summary.get("avg_mileage_km")), "Angebote mit km", "mileage"),
-        _metric("Risiko", str(summary["risk_warnings"]), f'{summary["price_changes"]} Preisänderungen', "risk"),
-    ])
+    source_options = "".join(
+        f'<option value="{html.escape(row["label"])}">{html.escape(row["label"])} ({row["count"]})</option>'
+        for row in summary.get("sources", [])
+    )
+    trim_options = "".join(
+        f'<option value="{html.escape(row["label"])}">{html.escape(row["label"])} ({row["count"]})</option>'
+        for row in summary.get("trims", [])
+    )
+    chart_json = html.escape(
+        json.dumps(
+            {"sources": summary.get("sources", []), "trims": summary.get("trims", [])},
+            ensure_ascii=False,
+        ),
+        quote=True,
+    )
+    metrics_html = "".join(
+        [
+            _metric(
+                "Aktive Treffer",
+                str(summary["total_active"]),
+                f"{summary['new_listings']} neu",
+                "count",
+            ),
+            _metric(
+                "Ø Preis",
+                format_eur(summary.get("avg_price_eur")),
+                f"Median {format_eur(summary.get('median_price_eur'))}",
+                "price",
+            ),
+            _metric(
+                "Ø Laufleistung",
+                format_km(summary.get("avg_mileage_km")),
+                "Angebote mit km",
+                "mileage",
+            ),
+            _metric(
+                "Risiko",
+                str(summary["risk_warnings"]),
+                f"{summary['price_changes']} Preisänderungen",
+                "risk",
+            ),
+        ]
+    )
     return f'''<!doctype html>
 <html lang="de">
 <head>
@@ -318,8 +380,8 @@ def render_html_site(payload: dict[str, Any]) -> str:
 <body><div class="shell">
   <header><div><div class="eyebrow">C6 Corvette Angebotsfeed</div><h1>Cleaner Überblick. Schnellere Entscheidung.</h1><p class="lead">Aktuelle öffentlich gefundene C6-Angebote mit Preisniveau, Laufleistung, Risiko-Hinweisen und Details pro Inserat. Die Übersicht ist lokal filter- und sortierbar.</p></div><section class="panel overview" data-dashboard-config><h2>Übersicht</h2><div class="metrics">{metrics_html}</div></section></header>
   {warnings_html}
-  <section class="dashboard"><aside class="panel controls"><h2>Ansicht konfigurieren</h2><div class="field"><label for="source-filter">Quelle</label><select id="source-filter"><option value="all">Alle Quellen</option>{source_options}</select></div><div class="field"><label for="trim-filter">Variante</label><select id="trim-filter"><option value="all">Alle Varianten</option>{trim_options}</select></div><div class="field"><label for="sort-order">Sortierung</label><select id="sort-order"><option value="score-desc">Score hoch</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option></select></div><label class="toggle"><span>Riskante Angebote ausblenden</span><input id="hide-risk" type="checkbox"></label><label class="toggle"><span>Ø Preis anzeigen</span><input type="checkbox" data-toggle-metric="price" checked></label><label class="toggle"><span>Ø Laufleistung anzeigen</span><input type="checkbox" data-toggle-metric="mileage" checked></label><div class="chart" id="source-chart" data-chart="sources" data-chart-json="{chart_json}"></div></aside><section><div class="list-head"><span id="visible-count">{summary['total_active']} Angebote</span><span>Details direkt in jeder Karte</span></div><main id="listing-grid">{cards_html}</main></section></section>
-  <footer>Generiert: {html.escape(payload['generated_at'])} · Exporte: feed/latest.md, data/exports/latest.json, data/exports/latest.csv</footer>
+  <section class="dashboard"><aside class="panel controls"><h2>Ansicht konfigurieren</h2><div class="field"><label for="source-filter">Quelle</label><select id="source-filter"><option value="all">Alle Quellen</option>{source_options}</select></div><div class="field"><label for="trim-filter">Variante</label><select id="trim-filter"><option value="all">Alle Varianten</option>{trim_options}</select></div><div class="field"><label for="sort-order">Sortierung</label><select id="sort-order"><option value="score-desc">Score hoch</option><option value="price-asc">Preis niedrig</option><option value="price-desc">Preis hoch</option><option value="mileage-asc">km niedrig</option></select></div><label class="toggle"><span>Riskante Angebote ausblenden</span><input id="hide-risk" type="checkbox"></label><label class="toggle"><span>Ø Preis anzeigen</span><input type="checkbox" data-toggle-metric="price" checked></label><label class="toggle"><span>Ø Laufleistung anzeigen</span><input type="checkbox" data-toggle-metric="mileage" checked></label><div class="chart" id="source-chart" data-chart="sources" data-chart-json="{chart_json}"></div></aside><section><div class="list-head"><span id="visible-count">{summary["total_active"]} Angebote</span><span>Details direkt in jeder Karte</span></div><main id="listing-grid">{cards_html}</main></section></section>
+  <footer>Generiert: {html.escape(payload["generated_at"])} · Exporte: feed/latest.md, data/exports/latest.json, data/exports/latest.csv</footer>
 </div><script>
 (function() {{
   const cards = Array.from(document.querySelectorAll('[data-listing-card]'));
@@ -344,9 +406,31 @@ def write_exports(payload: dict[str, Any], output_dir: str | Path) -> None:
     export_dir.mkdir(parents=True, exist_ok=True)
     site_dir.mkdir(parents=True, exist_ok=True)
     (feed_dir / "latest.md").write_text(render_markdown_feed(payload), encoding="utf-8")
-    (export_dir / "latest.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    (export_dir / "latest.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     with (export_dir / "latest.csv").open("w", newline="", encoding="utf-8") as handle:
-        fieldnames = ["id", "source", "title", "price_eur", "price_label", "mileage_km", "trim", "engine", "power_hp", "estimated_power_hp", "power_note", "transmission", "body_style", "inference_notes", "conflict_flags", "location_raw", "score", "change_type", "url"]
+        fieldnames = [
+            "id",
+            "source",
+            "title",
+            "price_eur",
+            "price_label",
+            "mileage_km",
+            "trim",
+            "engine",
+            "power_hp",
+            "estimated_power_hp",
+            "power_note",
+            "transmission",
+            "body_style",
+            "inference_notes",
+            "conflict_flags",
+            "location_raw",
+            "score",
+            "change_type",
+            "url",
+        ]
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for item in payload["listings"]:

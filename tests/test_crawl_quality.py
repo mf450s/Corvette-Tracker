@@ -12,13 +12,20 @@ def payload_with_sources(*sources: str):
 def test_crawl_quality_accepts_reasonable_autoscout_and_kleinanzeigen_counts():
     payload = payload_with_sources(*(["AutoScout24"] * 5), *(["Kleinanzeigen"] * 10))
 
-    assert validate_crawl_quality(payload, min_total=10, min_by_source={"AutoScout24": 5, "Kleinanzeigen": 10}) == []
+    assert (
+        validate_crawl_quality(
+            payload, min_total=10, min_by_source={"AutoScout24": 5, "Kleinanzeigen": 10}
+        )
+        == []
+    )
 
 
 def test_crawl_quality_warns_when_live_sources_return_too_few_listings():
     payload = payload_with_sources(*(["AutoScout24"] * 2), *(["Kleinanzeigen"] * 3))
 
-    warnings = validate_crawl_quality(payload, min_total=10, min_by_source={"AutoScout24": 5, "Kleinanzeigen": 10})
+    warnings = validate_crawl_quality(
+        payload, min_total=10, min_by_source={"AutoScout24": 5, "Kleinanzeigen": 10}
+    )
 
     assert any("only 5 total listings" in warning for warning in warnings)
     assert any("only 2 AutoScout24 listings" in warning for warning in warnings)
@@ -57,4 +64,6 @@ def test_run_tracker_validates_fresh_crawl_not_stale_database(monkeypatch, tmp_p
     assert exit_code == 3
     assert any("only 0 total listings" in warning for warning in payload.get("warnings", []))
     assert any("only 0 AutoScout24 listings" in warning for warning in payload.get("warnings", []))
-    assert any("only 0 Kleinanzeigen listings" in warning for warning in payload.get("warnings", []))
+    assert any(
+        "only 0 Kleinanzeigen listings" in warning for warning in payload.get("warnings", [])
+    )

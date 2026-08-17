@@ -26,7 +26,9 @@ def make_listing():
 
 def request_json(url: str, method="GET", payload=None):
     data = None if payload is None else json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(
+        url, data=data, method=method, headers={"Content-Type": "application/json"}
+    )
     with urllib.request.urlopen(req, timeout=5) as response:
         return response.status, json.loads(response.read().decode("utf-8"))
 
@@ -96,7 +98,9 @@ def test_web_api_returns_listing_history(tmp_path: Path):
 def test_web_api_status_returns_persisted_last_crawl_time(tmp_path: Path):
     export_dir = tmp_path / "data" / "exports"
     export_dir.mkdir(parents=True)
-    export_dir.joinpath("latest.json").write_text(json.dumps({"generated_at": "2026-07-09T12:34:56+00:00"}), encoding="utf-8")
+    export_dir.joinpath("latest.json").write_text(
+        json.dumps({"generated_at": "2026-07-09T12:34:56+00:00"}), encoding="utf-8"
+    )
     app = TrackerWebApp(store=TrackerStore(tmp_path / "tracker.sqlite"), output_dir=tmp_path)
     server = app.make_server("127.0.0.1", 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -115,9 +119,17 @@ def test_web_api_status_returns_persisted_last_crawl_time(tmp_path: Path):
 
 def test_web_api_run_response_includes_last_crawl_time(tmp_path: Path):
     def run_callback():
-        return 0, {"generated_at": "2026-07-09T13:00:00+00:00", "summary": {"total_active": 1}, "warnings": []}
+        return 0, {
+            "generated_at": "2026-07-09T13:00:00+00:00",
+            "summary": {"total_active": 1},
+            "warnings": [],
+        }
 
-    app = TrackerWebApp(store=TrackerStore(tmp_path / "tracker.sqlite"), output_dir=tmp_path, run_callback=run_callback)
+    app = TrackerWebApp(
+        store=TrackerStore(tmp_path / "tracker.sqlite"),
+        output_dir=tmp_path,
+        run_callback=run_callback,
+    )
     server = app.make_server("127.0.0.1", 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -150,7 +162,10 @@ def test_web_api_reads_and_updates_scoring_config(tmp_path: Path):
         status, updated = request_json(
             f"{base_url}/api/scoring",
             method="PATCH",
-            payload={"weights": {"manual_transmission": 45, "preferred_trim": 12}, "preferred_trims": ["Z06"]},
+            payload={
+                "weights": {"manual_transmission": 45, "preferred_trim": 12},
+                "preferred_trims": ["Z06"],
+            },
         )
 
         assert status == 200
@@ -230,8 +245,12 @@ def test_web_shell_shows_score_badge_on_overview_preview_image():
 
     assert "score-badge" in html
     assert '<span class="score-badge">${badgeScore}</span>' in html
-    assert html.index('<span class="score-badge">${badgeScore}</span>') > html.index('<a class="image"')
-    assert html.index('<span class="score-badge">${badgeScore}</span>') < html.index('${image ? `<img')
+    assert html.index('<span class="score-badge">${badgeScore}</span>') > html.index(
+        '<a class="image"'
+    )
+    assert html.index('<span class="score-badge">${badgeScore}</span>') < html.index(
+        "${image ? `<img"
+    )
 
 
 def test_web_shell_contains_priorities_picker():
@@ -250,7 +269,7 @@ def test_web_shell_contains_priorities_picker():
     for key in ("transmission", "body_style"):
         assert f'data-priority-key="{key}"' in html
         assert 'data-priority-type="b" data-left-label=' in html
-        assert 'data-right-label=' in html
+        assert "data-right-label=" in html
         assert 'min="-1" max="1" step="1" value="0"' in html
     assert "Nicht wichtig" in html
     assert "Kritisch" in html
@@ -279,7 +298,9 @@ def test_web_api_returns_404_for_missing_listing(tmp_path: Path):
     base_url = f"http://127.0.0.1:{server.server_address[1]}"
     try:
         try:
-            request_json(f"{base_url}/api/listings/missing", method="PATCH", payload={"engine": "LS3"})
+            request_json(
+                f"{base_url}/api/listings/missing", method="PATCH", payload={"engine": "LS3"}
+            )
         except urllib.error.HTTPError as exc:
             assert exc.code == 404
         else:
@@ -292,26 +313,96 @@ def test_web_api_returns_404_for_missing_listing(tmp_path: Path):
 # --- API filter integration tests ---
 
 
-def _make_api_listing(id, source="Kleinanzeigen", transmission="manual", trim="Z06", engine="LS7",
-                      body_style="Coupé", price=35000, mileage=50000, change_type="new",
-                      score=70, risk_flags=None):
+def _make_api_listing(
+    id,
+    source="Kleinanzeigen",
+    transmission="manual",
+    trim="Z06",
+    engine="LS7",
+    body_style="Coupé",
+    price=35000,
+    mileage=50000,
+    change_type="new",
+    score=70,
+    risk_flags=None,
+):
     return Listing(
-        id=id, source=source, source_listing_id=id,
+        id=id,
+        source=source,
+        source_listing_id=id,
         url=f"https://example.test/{id}",
-        title=f"Corvette C6 {trim}", generation="C6",
-        transmission=transmission, trim=trim, engine=engine,
-        body_style=body_style, price_eur=price, mileage_km=mileage,
-        score=score, change_type=change_type,
+        title=f"Corvette C6 {trim}",
+        generation="C6",
+        transmission=transmission,
+        trim=trim,
+        engine=engine,
+        body_style=body_style,
+        price_eur=price,
+        mileage_km=mileage,
+        score=score,
+        change_type=change_type,
         risk_flags=risk_flags or [],
     )
 
 
 DIVERSE_LISTINGS = [
-    _make_api_listing("a", source="Kleinanzeigen", transmission="manual", trim="Z06", engine="LS7", body_style="Coupé", price=35000, mileage=50000, score=70),
-    _make_api_listing("b", source="AutoScout24", transmission="automatic", trim="Base", engine="LS2", body_style="Cabrio", price=25000, mileage=100000, score=35),
-    _make_api_listing("c", source="AutoUncle", transmission="manual", trim="Grand Sport", engine="LS3", body_style="Targa", price=45000, mileage=30000, score=85),
-    _make_api_listing("d", source="Kleinanzeigen", transmission="manual", trim="Z06", engine="LS7", body_style="Coupé", price=38000, mileage=45000, score=72, change_type="price_change"),
-    _make_api_listing("e", source="Kleinanzeigen", transmission="automatic", trim="Base", engine="LS2", body_style="Cabrio", price=18000, mileage=120000, score=40, risk_flags=["damage_reported"]),
+    _make_api_listing(
+        "a",
+        source="Kleinanzeigen",
+        transmission="manual",
+        trim="Z06",
+        engine="LS7",
+        body_style="Coupé",
+        price=35000,
+        mileage=50000,
+        score=70,
+    ),
+    _make_api_listing(
+        "b",
+        source="AutoScout24",
+        transmission="automatic",
+        trim="Base",
+        engine="LS2",
+        body_style="Cabrio",
+        price=25000,
+        mileage=100000,
+        score=35,
+    ),
+    _make_api_listing(
+        "c",
+        source="AutoUncle",
+        transmission="manual",
+        trim="Grand Sport",
+        engine="LS3",
+        body_style="Targa",
+        price=45000,
+        mileage=30000,
+        score=85,
+    ),
+    _make_api_listing(
+        "d",
+        source="Kleinanzeigen",
+        transmission="manual",
+        trim="Z06",
+        engine="LS7",
+        body_style="Coupé",
+        price=38000,
+        mileage=45000,
+        score=72,
+        change_type="price_change",
+    ),
+    _make_api_listing(
+        "e",
+        source="Kleinanzeigen",
+        transmission="automatic",
+        trim="Base",
+        engine="LS2",
+        body_style="Cabrio",
+        price=18000,
+        mileage=120000,
+        score=40,
+        risk_flags=["damage_reported"],
+    ),
 ]
 
 

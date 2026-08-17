@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import sys
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -105,22 +104,24 @@ def main() -> int:
 
         # --- Stage 1: listing is online ---
         print("\n=== Stage 1: Listing is online ===")
-        server.set("/auto/123", 200, (
-            "<html><body>Chevrolet Corvette C6 6.0 V8, 39.900 €</body></html>"
-        ))
+        server.set(
+            "/auto/123", 200, ("<html><body>Chevrolet Corvette C6 6.0 V8, 39.900 €</body></html>")
+        )
         base = server.start()
         print(f"  Server started at {base}")
 
-        store.upsert_listings([
-            Listing(
-                id="kleinanzeigen_999",
-                source="Kleinanzeigen",
-                source_listing_id="999",
-                url=f"{base}/auto/123",
-                title="Corvette C6",
-                generation="C6",
-            ),
-        ])
+        store.upsert_listings(
+            [
+                Listing(
+                    id="kleinanzeigen_999",
+                    source="Kleinanzeigen",
+                    source_listing_id="999",
+                    url=f"{base}/auto/123",
+                    title="Corvette C6",
+                    generation="C6",
+                ),
+            ]
+        )
         print(f"  Inserted test listing → {base}/auto/123")
 
         summary = check_stale_offers(store, force=True)
@@ -195,9 +196,9 @@ def main() -> int:
 
         # --- Stage 5: content-based detection (200 + 'nicht gefunden' body) ---
         print("\n=== Stage 5: Content-based detection (200 + body says 'not found') ===")
-        server.set("/auto/123", 200, (
-            "<html><body>Die Anzeige wurde leider nicht gefunden.</body></html>"
-        ))
+        server.set(
+            "/auto/123", 200, ("<html><body>Die Anzeige wurde leider nicht gefunden.</body></html>")
+        )
 
         summary = check_stale_offers(store, force=True)
         all_ok &= _check(
@@ -238,7 +239,7 @@ def main() -> int:
 
         # --- Summary ---
         server.stop()
-        print(f"\n{'='*50}")
+        print(f"\n{'=' * 50}")
         if all_ok:
             print("ALL STAGES PASSED  ✓")
             return PASS

@@ -7,26 +7,46 @@ from typing import Any
 
 from .models import Listing
 
-
 # Scalar fields that can be cross-filled between cluster listings
 SCALAR_FIELDS: set[str] = {
-    "price_eur", "price_label", "mileage_km",
-    "engine", "probable_engine", "engine_confidence", "engine_note",
-    "power_hp", "estimated_power_hp", "power_note",
-    "trim", "first_registration", "tuv_until",
-    "transmission", "body_style",
-    "exterior_color", "interior_color",
-    "location_raw", "location_country",
-    "origin_country", "origin_confidence",
-    "seller_type", "vin", "description_text",
-    "accident_status", "damage", "has_damage",
+    "price_eur",
+    "price_label",
+    "mileage_km",
+    "engine",
+    "probable_engine",
+    "engine_confidence",
+    "engine_note",
+    "power_hp",
+    "estimated_power_hp",
+    "power_note",
+    "trim",
+    "first_registration",
+    "tuv_until",
+    "transmission",
+    "body_style",
+    "exterior_color",
+    "interior_color",
+    "location_raw",
+    "location_country",
+    "origin_country",
+    "origin_confidence",
+    "seller_type",
+    "vin",
+    "description_text",
+    "accident_status",
+    "damage",
+    "has_damage",
     "eu_spec",
 }
 
 # List fields that should be merged (deduplicated)
 LIST_FIELDS: set[str] = {
-    "equipment", "risk_flags", "inference_notes",
-    "conflict_flags", "visual_flags", "image_urls",
+    "equipment",
+    "risk_flags",
+    "inference_notes",
+    "conflict_flags",
+    "visual_flags",
+    "image_urls",
 }
 
 
@@ -41,16 +61,20 @@ def _normalize_color(value: str | None) -> str:
     v = value.strip().lower()
     mapping = {
         "schwarz": "black",
-        "weiss": "white", "weiß": "white",
+        "weiss": "white",
+        "weiß": "white",
         "rot": "red",
         "blau": "blue",
-        "grün": "green", "gruen": "green",
+        "grün": "green",
+        "gruen": "green",
         "gelb": "yellow",
-        "grau": "gray", "grey": "gray",
+        "grau": "gray",
+        "grey": "gray",
         "silber": "silver",
         "braun": "brown",
         "orange": "orange",
-        "lila": "purple", "violett": "purple",
+        "lila": "purple",
+        "violett": "purple",
         "beige": "beige",
         "creme": "cream",
         "gold": "gold",
@@ -75,7 +99,7 @@ def _extract_year(value: str | None) -> str:
     if not value:
         return "0"
     m = re.search(r"(\d{4})", value)
-    return m.group(1) if m else "0"
+    return str(m.group(1)) if m else "0"
 
 
 def _soft_key(listing: Listing) -> str:
@@ -85,18 +109,20 @@ def _soft_key(listing: Listing) -> str:
     power_bucket = (listing.power_hp or 0) // 50
     year = _extract_year(listing.first_registration)
 
-    raw = "|".join([
-        _slug(listing.engine),
-        _slug(_normalize_trim(listing.trim)),
-        _slug(listing.location_raw),
-        str(price_bucket),
-        str(mileage_bucket),
-        _slug(listing.transmission),
-        _slug(listing.body_style),
-        _slug(_normalize_color(listing.exterior_color)),
-        year,
-        str(power_bucket),
-    ])
+    raw = "|".join(
+        [
+            _slug(listing.engine),
+            _slug(_normalize_trim(listing.trim)),
+            _slug(listing.location_raw),
+            str(price_bucket),
+            str(mileage_bucket),
+            _slug(listing.transmission),
+            _slug(listing.body_style),
+            _slug(_normalize_color(listing.exterior_color)),
+            year,
+            str(power_bucket),
+        ]
+    )
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
 
 
@@ -114,49 +140,64 @@ def _all_soft_keys(listing: Listing) -> list[tuple[str, str]]:
     yr = _extract_year(listing.first_registration)
 
     # Fallback: skip trim (most common source of variation between platforms)
-    raw_no_trim = "|".join([
-        _slug(listing.engine),
-        _slug(listing.location_raw),
-        str(tb), str(mb),
-        _slug(listing.transmission),
-        _slug(listing.body_style),
-        _slug(_normalize_color(listing.exterior_color)),
-        yr, str(pb),
-    ])
+    raw_no_trim = "|".join(
+        [
+            _slug(listing.engine),
+            _slug(listing.location_raw),
+            str(tb),
+            str(mb),
+            _slug(listing.transmission),
+            _slug(listing.body_style),
+            _slug(_normalize_color(listing.exterior_color)),
+            yr,
+            str(pb),
+        ]
+    )
     keys.append(("no_trim", hashlib.sha1(raw_no_trim.encode("utf-8")).hexdigest()[:12]))
 
     # Fallback: skip location (text varies between sources)
-    raw_no_loc = "|".join([
-        _slug(listing.engine),
-        _slug(_normalize_trim(listing.trim)),
-        str(tb), str(mb),
-        _slug(listing.transmission),
-        _slug(listing.body_style),
-        _slug(_normalize_color(listing.exterior_color)),
-        yr, str(pb),
-    ])
+    raw_no_loc = "|".join(
+        [
+            _slug(listing.engine),
+            _slug(_normalize_trim(listing.trim)),
+            str(tb),
+            str(mb),
+            _slug(listing.transmission),
+            _slug(listing.body_style),
+            _slug(_normalize_color(listing.exterior_color)),
+            yr,
+            str(pb),
+        ]
+    )
     keys.append(("no_loc", hashlib.sha1(raw_no_loc.encode("utf-8")).hexdigest()[:12]))
 
     # Fallback: skip engine (inferred vs explicit between sources)
-    raw_no_eng = "|".join([
-        _slug(_normalize_trim(listing.trim)),
-        _slug(listing.location_raw),
-        str(tb), str(mb),
-        _slug(listing.transmission),
-        _slug(listing.body_style),
-        _slug(_normalize_color(listing.exterior_color)),
-        yr, str(pb),
-    ])
+    raw_no_eng = "|".join(
+        [
+            _slug(_normalize_trim(listing.trim)),
+            _slug(listing.location_raw),
+            str(tb),
+            str(mb),
+            _slug(listing.transmission),
+            _slug(listing.body_style),
+            _slug(_normalize_color(listing.exterior_color)),
+            yr,
+            str(pb),
+        ]
+    )
     keys.append(("no_eng", hashlib.sha1(raw_no_eng.encode("utf-8")).hexdigest()[:12]))
 
     # Final fallback: legacy fields (engine + trim + location + price + mileage)
     # Same as the original _soft_key — ensures backward compatibility.
-    raw_legacy = "|".join([
-        _slug(listing.engine),
-        _slug(_normalize_trim(listing.trim)),
-        _slug(listing.location_raw),
-        str(tb), str(mb),
-    ])
+    raw_legacy = "|".join(
+        [
+            _slug(listing.engine),
+            _slug(_normalize_trim(listing.trim)),
+            _slug(listing.location_raw),
+            str(tb),
+            str(mb),
+        ]
+    )
     keys.append(("legacy", hashlib.sha1(raw_legacy.encode("utf-8")).hexdigest()[:12]))
 
     return keys
@@ -169,14 +210,26 @@ def _dedupe_exact_urls(listings: list[Listing]) -> list[Listing]:
         if existing is None:
             by_url[listing.url] = listing
             continue
-        existing_score = 1 if existing.source_listing_id and not existing.source_listing_id.startswith(("ka-", "as24-", "mobile-")) else 0
-        listing_score = 1 if listing.source_listing_id and not listing.source_listing_id.startswith(("ka-", "as24-", "mobile-")) else 0
+        existing_score = (
+            1
+            if existing.source_listing_id
+            and not existing.source_listing_id.startswith(("ka-", "as24-", "mobile-"))
+            else 0
+        )
+        listing_score = (
+            1
+            if listing.source_listing_id
+            and not listing.source_listing_id.startswith(("ka-", "as24-", "mobile-"))
+            else 0
+        )
         if listing_score >= existing_score:
             by_url[listing.url] = listing
     return list(by_url.values())
 
 
-def assign_clusters(listings: list[Listing], existing: list[Listing] | None = None) -> list[Listing]:
+def assign_clusters(
+    listings: list[Listing], existing: list[Listing] | None = None
+) -> list[Listing]:
     """Assign cluster_id to listings.
 
     Freshly scraped `listings` are first deduplicated by exact URL and matched
@@ -224,25 +277,31 @@ def assign_clusters(listings: list[Listing], existing: list[Listing] | None = No
             keys_ex = dict(_all_soft_keys(ex))
             for label, key_hash in keys_ex.items():
                 label_pool = pool.setdefault(label, {})
-                if key_hash not in label_pool:
-                    label_pool[key_hash] = ex.cluster_id
-                elif ex.cluster_id.startswith("manual_") and not label_pool[key_hash].startswith("manual_"):
+                if key_hash not in label_pool or (
+                    ex.cluster_id.startswith("manual_")
+                    and not label_pool[key_hash].startswith("manual_")
+                ):
                     label_pool[key_hash] = ex.cluster_id
 
-            # Title-based fallback key (only used in this adoption pool –
+            # Title-based fallback key (only used in this adoption pool -
             # NOT part of _all_soft_keys()).
-            title_key = f"{_slug(ex.title)}|{(ex.price_eur or 0) // 1000}|{(ex.mileage_km or 0) // 5000}"
+            title_key = (
+                f"{_slug(ex.title)}|{(ex.price_eur or 0) // 1000}|{(ex.mileage_km or 0) // 5000}"
+            )
             title_pool = pool.setdefault("title", {})
-            if title_key not in title_pool:
-                title_pool[title_key] = ex.cluster_id
-            elif ex.cluster_id.startswith("manual_") and not title_pool[title_key].startswith("manual_"):
+            if title_key not in title_pool or (
+                ex.cluster_id.startswith("manual_")
+                and not title_pool[title_key].startswith("manual_")
+            ):
                 title_pool[title_key] = ex.cluster_id
 
         for listing in listings:
             if listing.cluster_id:
                 continue
             keys_new = dict(_all_soft_keys(listing))
-            keys_new["title"] = f"{_slug(listing.title)}|{(listing.price_eur or 0) // 1000}|{(listing.mileage_km or 0) // 5000}"
+            keys_new["title"] = (
+                f"{_slug(listing.title)}|{(listing.price_eur or 0) // 1000}|{(listing.mileage_km or 0) // 5000}"
+            )
             for label in ("full", "no_trim", "no_loc", "no_eng", "legacy", "title"):
                 if label not in pool:
                     continue

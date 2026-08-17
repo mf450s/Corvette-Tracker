@@ -127,7 +127,9 @@ def merge_enrichment_result(listing: Listing, result: EnrichmentResult) -> Listi
     return listing
 
 
-def enrich_listings(listings: list[Listing], provider: AIEnrichmentProvider, *, max_images: int = 8) -> list[Listing]:
+def enrich_listings(
+    listings: list[Listing], provider: AIEnrichmentProvider, *, max_images: int = 8
+) -> list[Listing]:
     enriched: list[Listing] = []
     for listing in listings:
         enrichment_input = build_enrichment_input(listing, max_images=max_images)

@@ -3,11 +3,10 @@ from __future__ import annotations
 import importlib
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing_extensions import Self
 
 from .enums import SourceType
 from .scoring import DEFAULT_SCORING_CONFIG, merge_scoring_config
@@ -95,13 +94,18 @@ class ScoringConfig(BaseModel):
     base_score: int = 20
     total_budget: int = 80
     weights: ScoringWeights = Field(default_factory=ScoringWeights)
-    preferred_trims: list[str] = Field(
-        default_factory=lambda: ["Grand Sport", "Z06", "ZR1"]
+    preferred_trims: list[str] = Field(default_factory=lambda: ["Grand Sport", "Z06", "ZR1"])
+    budget: dict[str, int] = Field(
+        default_factory=lambda: {
+            "engine": 15,
+            "transmission": 10,
+            "trim": 8,
+            "body": 6,
+            "mileage": 6,
+            "completeness": 3,
+            "eu_spec": 2,
+        }
     )
-    budget: dict[str, int] = Field(default_factory=lambda: {
-        "engine": 15, "transmission": 10, "trim": 8,
-        "body": 6, "mileage": 6, "completeness": 3, "eu_spec": 2,
-    })
     risk_penalties: RiskPenalties = Field(default_factory=RiskPenalties)
 
     model_config = {"extra": "ignore"}
@@ -146,9 +150,7 @@ class CorvetteConfig(BaseModel):
         known = {s.value for s in SourceType}
         for name in self.sources:
             if name not in known:
-                raise ValueError(
-                    f"Unknown source '{name}'. Allowed: {', '.join(sorted(known))}"
-                )
+                raise ValueError(f"Unknown source '{name}'. Allowed: {', '.join(sorted(known))}")
         return self
 
     # --- dict-like access for backward compat ---
@@ -169,10 +171,7 @@ class CorvetteConfig(BaseModel):
     def to_flat_dict(self) -> dict[str, Any]:
         """Return the legacy flat dict format expected by current code."""
         return {
-            "sources": {
-                name: src.model_dump()
-                for name, src in self.sources.items()
-            },
+            "sources": {name: src.model_dump() for name, src in self.sources.items()},
             "output_dir": self.output_dir,
             "database_path": self.database_path,
             "ai_enrichment": self.ai_enrichment.model_dump(),
@@ -206,8 +205,8 @@ def _fill_source_defaults() -> None:
     if _default_source_urls:
         return
     # Late imports to avoid circular dependency at module level.
-    from .sources.autouncle import DEFAULT_URL as AUTOUNCLE_URL
     from .sources.autoscout24 import DEFAULT_URL as AS24_URL
+    from .sources.autouncle import DEFAULT_URL as AUTOUNCLE_URL
     from .sources.classic_trader import DEFAULT_URL as CLASSIC_TRADER_URL
     from .sources.kleinanzeigen import DEFAULT_URL as KA_URL
     from .sources.mobile_de import DEFAULT_URL as MOBILE_URL
@@ -216,7 +215,10 @@ def _fill_source_defaults() -> None:
     _default_source_urls["kleinanzeigen"] = (KA_URL, [KA_URL])
     _default_source_urls["autouncle"] = (
         AUTOUNCLE_URL,
-        [AUTOUNCLE_URL, "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6"],
+        [
+            AUTOUNCLE_URL,
+            "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette?freetext=C6",
+        ],
     )
     _default_source_urls["classic_trader"] = (
         CLASSIC_TRADER_URL,
@@ -247,8 +249,7 @@ def _build_default_dict() -> CorvetteConfig:
     """Build a CorvetteConfig from DEFAULT_CONFIG."""
     return CorvetteConfig(
         sources={
-            name: SourceConfig(**cfg)
-            for name, cfg in DEFAULT_CONFIG.get("sources", {}).items()
+            name: SourceConfig(**cfg) for name, cfg in DEFAULT_CONFIG.get("sources", {}).items()
         },
         output_dir=DEFAULT_CONFIG["output_dir"],
         database_path=DEFAULT_CONFIG["database_path"],

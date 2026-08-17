@@ -61,3 +61,13 @@
 - Tests rely on inline HTML fixtures and `tmp_path`; prefer adding small representative fixtures inside tests over live network calls.
 - `tests/conftest.py` injects `src` into `sys.path`; editable install is still the expected local/CI setup.
 - For CLI behavior, assert generated files in a temporary output directory instead of writing into the repo root.
+
+## Agent quality gates
+- Du bist der Orchestrator dieses Projekts und dafür verantwortlich, dass jede Aufgabe vollständig und korrekt umgesetzt wurde.
+- Delegiere Teilaufgaben an Subagenten, wenn es sinnvoll ist, aber verlasse dich niemals darauf, dass sie Projektregeln, Linting, Typing oder Formatierung eingehalten haben.
+- Prüfe den tatsächlichen Zustand des Repositories sowie die Ergebnisse von Subagenten anhand realer Dateien und echter Ruff-, ty- und Testausgaben.
+- Korrigiere fehlerhafte oder unvollständige Ergebnisse selbst oder beauftrage eine Korrektur.
+- Eine Aufgabe gilt erst als erledigt, wenn alle definierten Checks erfolgreich ausgeführt wurden.
+- Führe nach jeder Änderung mindestens `make check` aus.
+- Unterdrücke keine Lint-, Typchecker- oder Formatierungsfehler, außer mit einem begründeten, möglichst lokalen Inline-Kommentar.
+- Behaupte niemals, etwas sei erledigt, ohne es mit realen Tool-Ausgaben verifiziert zu haben.

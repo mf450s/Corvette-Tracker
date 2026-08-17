@@ -163,9 +163,7 @@ def _re_scrape_autoscout24(
         else:
             # Merge fresh detail-page fields into the existing listing
             if fresh.image_urls:
-                listing.image_urls = [
-                    normalize_autoscout24_image_url(u) for u in fresh.image_urls
-                ]
+                listing.image_urls = [normalize_autoscout24_image_url(u) for u in fresh.image_urls]
             # AutoScout24 rewrites offer URL slugs (taxonomy migrations).
             # Adopt the canonical URL/title so later checks and re-scrapes
             # resolve directly and stale title prices are dropped.
@@ -322,9 +320,7 @@ def re_scrape_offer(
         html = fetch_html(fetch_target, retries=1)
     except FetchError as exc:
         if listing:
-            store.update_online_status(
-                listing.id, is_online=False, error_message=str(exc)
-            )
+            store.update_online_status(listing.id, is_online=False, error_message=str(exc))
         return {
             "success": False,
             "listing_id": listing.id if listing else None,
@@ -336,12 +332,20 @@ def re_scrape_offer(
     # ── 4. Source-specific re-scrape ────────────────────────────────────
     if source == "Kleinanzeigen":
         return _re_scrape_kleinanzeigen(
-            store, listing, fetch_target, html, caller_hint_id=caller_hint,
+            store,
+            listing,
+            fetch_target,
+            html,
+            caller_hint_id=caller_hint,
         )
 
     if source == "AutoScout24":
         return _re_scrape_autoscout24(
-            store, listing, fetch_target, html, caller_hint_id=caller_hint,
+            store,
+            listing,
+            fetch_target,
+            html,
+            caller_hint_id=caller_hint,
         )
 
     # ── 5. Fallback: re-verify for sources without detail parsing ───────

@@ -19,11 +19,14 @@ def parse_mobile_de_search(html: str, base_url: str = DEFAULT_URL) -> list[Listi
         text = _text(article)
         if "corvette" not in text.lower() and "c6" not in text.lower():
             continue
-        link = article.select_one('a[href*="/fahrzeuge/details.html"], a[href*="/auto-inserat/"], a[href]')
+        link = article.select_one(
+            'a[href*="/fahrzeuge/details.html"], a[href*="/auto-inserat/"], a[href]'
+        )
         if not link:
             continue
         from urllib.parse import urljoin
-        url = urljoin(base_url, link.get("href"))
+
+        url = urljoin(base_url, str(link.get("href") or ""))
         title_node = article.select_one("h2, h3, a")
         title = _text(title_node) or text[:120]
         source_id = article.get("data-testid") or article.get("id") or f"mobile-{index}"

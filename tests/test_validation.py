@@ -1,13 +1,13 @@
 from corvette_tracker.models import Listing
 from corvette_tracker.validation import (
-    validate_listing,
-    apply_validation_flags,
-    sanity_check_against_previous,
-    safe_normalize_listing,
     CRITICAL,
     ERROR,
-    WARN,
     INFO,
+    WARN,
+    apply_validation_flags,
+    safe_normalize_listing,
+    sanity_check_against_previous,
+    validate_listing,
 )
 
 
@@ -286,11 +286,11 @@ def test_safe_normalize_exception():
     from corvette_tracker.validation import safe_normalize_listing as snl
 
     # Reset last_error
-    snl._last_error = [None]  # noqa
+    snl._last_error = [None]
 
     def failing_func(*args, **kwargs):
         raise ValueError("boom")
 
     result = snl(failing_func, "x")
     assert result is None
-    assert isinstance(snl._last_error[0], ValueError)  # noqa
+    assert isinstance(snl._last_error[0], ValueError)

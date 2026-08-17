@@ -43,18 +43,104 @@ def make_listing(
 
 
 LISTINGS = [
-    make_listing("a", source="Kleinanzeigen", transmission="manual", trim="Z06", engine="LS7", body_style="Coupé", price_eur=35000, mileage_km=50000, score=70),
-    make_listing("b", source="AutoScout24", transmission="automatic", trim="Base", engine="LS2", body_style="Cabrio", price_eur=25000, mileage_km=100000, score=35),
-    make_listing("c", source="AutoUncle", transmission="manual", trim="Grand Sport", engine="LS3", body_style="Targa", price_eur=45000, mileage_km=30000, score=85),
-    make_listing("d", source="Kleinanzeigen", transmission="automatic", trim="ZR1", engine="LS9", body_style="Coupé", price_eur=95000, mileage_km=15000, score=95),
-    make_listing("e", source="AutoScout24", transmission="manual", trim="Z06", engine="LS7", body_style="Coupé", price_eur=38000, mileage_km=45000, score=72, change_type="price_change"),
-    make_listing("f", source="Kleinanzeigen", transmission="manual", trim="Base", engine="LS2", body_style="Convertible", price_eur=18000, mileage_km=120000, score=40, risk_flags=["damage_reported"]),
-    make_listing("g", source="AutoUncle", transmission="manual", trim="Z06", engine="LS7", body_style="Coupé", price_eur=42000, mileage_km=60000, score=78, first_registration="2010-03", eu_spec=True),
-    make_listing("h", source="Kleinanzeigen", transmission="automatic", trim="Base", engine="LS2", body_style="Cabrio", price_eur=15000, mileage_km=180000, score=25, change_type="unchanged"),
+    make_listing(
+        "a",
+        source="Kleinanzeigen",
+        transmission="manual",
+        trim="Z06",
+        engine="LS7",
+        body_style="Coupé",
+        price_eur=35000,
+        mileage_km=50000,
+        score=70,
+    ),
+    make_listing(
+        "b",
+        source="AutoScout24",
+        transmission="automatic",
+        trim="Base",
+        engine="LS2",
+        body_style="Cabrio",
+        price_eur=25000,
+        mileage_km=100000,
+        score=35,
+    ),
+    make_listing(
+        "c",
+        source="AutoUncle",
+        transmission="manual",
+        trim="Grand Sport",
+        engine="LS3",
+        body_style="Targa",
+        price_eur=45000,
+        mileage_km=30000,
+        score=85,
+    ),
+    make_listing(
+        "d",
+        source="Kleinanzeigen",
+        transmission="automatic",
+        trim="ZR1",
+        engine="LS9",
+        body_style="Coupé",
+        price_eur=95000,
+        mileage_km=15000,
+        score=95,
+    ),
+    make_listing(
+        "e",
+        source="AutoScout24",
+        transmission="manual",
+        trim="Z06",
+        engine="LS7",
+        body_style="Coupé",
+        price_eur=38000,
+        mileage_km=45000,
+        score=72,
+        change_type="price_change",
+    ),
+    make_listing(
+        "f",
+        source="Kleinanzeigen",
+        transmission="manual",
+        trim="Base",
+        engine="LS2",
+        body_style="Convertible",
+        price_eur=18000,
+        mileage_km=120000,
+        score=40,
+        risk_flags=["damage_reported"],
+    ),
+    make_listing(
+        "g",
+        source="AutoUncle",
+        transmission="manual",
+        trim="Z06",
+        engine="LS7",
+        body_style="Coupé",
+        price_eur=42000,
+        mileage_km=60000,
+        score=78,
+        first_registration="2010-03",
+        eu_spec=True,
+    ),
+    make_listing(
+        "h",
+        source="Kleinanzeigen",
+        transmission="automatic",
+        trim="Base",
+        engine="LS2",
+        body_style="Cabrio",
+        price_eur=15000,
+        mileage_km=180000,
+        score=25,
+        change_type="unchanged",
+    ),
 ]
 
 
 # --- No filter = no change ---
+
 
 def test_no_filters_returns_all():
     result = filter_listings(LISTINGS, {})
@@ -68,6 +154,7 @@ def test_empty_filters_returns_all():
 
 
 # --- Categorical filters (P0) ---
+
 
 def test_filter_by_source():
     result = filter_listings(LISTINGS, {"source": "Kleinanzeigen"})
@@ -118,6 +205,7 @@ def test_filter_by_body_style_cabrio():
 
 # --- Numeric range filters (P1) ---
 
+
 def test_filter_price_min():
     result = filter_listings(LISTINGS, {"price_min": "40000"})
     assert all((l.price_eur or 0) >= 40000 for l in result)
@@ -149,6 +237,7 @@ def test_filter_mileage_max():
 
 # --- Change type filter ---
 
+
 def test_filter_change_type():
     result = filter_listings(LISTINGS, {"change_type": "price_change"})
     assert len(result) == 1
@@ -156,6 +245,7 @@ def test_filter_change_type():
 
 
 # --- Risk-free toggle ---
+
 
 def test_filter_risk_free():
     result = filter_listings(LISTINGS, {"risk_free": "true"})
@@ -171,6 +261,7 @@ def test_filter_risk_free_ignores_listings_with_risk():
 
 # --- Score minimum ---
 
+
 def test_filter_score_min():
     result = filter_listings(LISTINGS, {"score_min": "70"})
     assert all(l.score >= 70 for l in result)
@@ -178,6 +269,7 @@ def test_filter_score_min():
 
 
 # --- EZ year range ---
+
 
 def test_filter_ez_min():
     result = filter_listings(LISTINGS, {"ez_min": "2010"})
@@ -196,6 +288,7 @@ def test_filter_ez_range():
 
 # --- Accident status ---
 
+
 def test_filter_accident_status():
     result = filter_listings(LISTINGS, {"accident_status": "unbekannt"})
     assert all(l.accident_status == "unbekannt" for l in result)
@@ -203,6 +296,7 @@ def test_filter_accident_status():
 
 
 # --- TÜV minimum year ---
+
 
 def test_filter_tuv_min():
     # All test listings have tuv_until "2026-05"
@@ -214,6 +308,7 @@ def test_filter_tuv_min():
 
 
 # --- EU spec ---
+
 
 def test_filter_eu_spec_true():
     result = filter_listings(LISTINGS, {"eu_spec": "true"})
@@ -229,6 +324,7 @@ def test_filter_eu_spec_false():
 
 
 # --- Combined filters ---
+
 
 def test_combined_source_and_transmission():
     result = filter_listings(LISTINGS, {"source": "Kleinanzeigen", "transmission": "manual"})
@@ -248,18 +344,22 @@ def test_combined_trim_engine_score():
 
 
 def test_combined_many_filters():
-    result = filter_listings(LISTINGS, {
-        "source": "Kleinanzeigen",
-        "transmission": "manual",
-        "body_style": "Coupé",
-        "price_min": "30000",
-        "score_min": "60",
-    })
+    result = filter_listings(
+        LISTINGS,
+        {
+            "source": "Kleinanzeigen",
+            "transmission": "manual",
+            "body_style": "Coupé",
+            "price_min": "30000",
+            "score_min": "60",
+        },
+    )
     assert len(result) == 1  # a
     assert result[0].id == "a"
 
 
 # --- Unknown filter keys are silently ignored ---
+
 
 def test_unknown_filter_key():
     result = filter_listings(LISTINGS, {"unknown_filter": "value"})
@@ -272,6 +372,7 @@ def test_invalid_numeric_filter_does_not_crash():
 
 
 # --- Edge cases: empty list, None fields ---
+
 
 def test_empty_listings_returns_empty():
     result = filter_listings([], {"source": "Kleinanzeigen"})
@@ -287,8 +388,11 @@ def test_score_min_with_none_score_does_not_crash():
     listings = [
         make_listing("a"),
         Listing(
-            id="none_score", source="Kleinanzeigen", source_listing_id="none_score",
-            url="https://example.test/none_score", title="No Score",
+            id="none_score",
+            source="Kleinanzeigen",
+            source_listing_id="none_score",
+            url="https://example.test/none_score",
+            title="No Score",
             score=None,
         ),
     ]
@@ -300,8 +404,11 @@ def test_score_min_with_none_score_does_not_crash():
 def test_score_min_none_score_filtered_out():
     listings = [
         Listing(
-            id="none_score", source="Kleinanzeigen", source_listing_id="none_score",
-            url="https://example.test/none_score", title="No Score",
+            id="none_score",
+            source="Kleinanzeigen",
+            source_listing_id="none_score",
+            url="https://example.test/none_score",
+            title="No Score",
             score=None,
         ),
     ]
@@ -312,8 +419,11 @@ def test_score_min_none_score_filtered_out():
 def test_ez_min_none_registration_filtered_out():
     listings = [
         Listing(
-            id="no_ez", source="Kleinanzeigen", source_listing_id="no_ez",
-            url="https://example.test/no_ez", title="No EZ",
+            id="no_ez",
+            source="Kleinanzeigen",
+            source_listing_id="no_ez",
+            url="https://example.test/no_ez",
+            title="No EZ",
             first_registration=None,
         ),
         make_listing("g"),
@@ -326,8 +436,11 @@ def test_ez_min_none_registration_filtered_out():
 def test_tuv_min_none_tuv_filtered_out():
     listings = [
         Listing(
-            id="no_tuv", source="Kleinanzeigen", source_listing_id="no_tuv",
-            url="https://example.test/no_tuv", title="No TUV",
+            id="no_tuv",
+            source="Kleinanzeigen",
+            source_listing_id="no_tuv",
+            url="https://example.test/no_tuv",
+            title="No TUV",
             tuv_until=None,
         ),
         make_listing("a"),
@@ -338,6 +451,7 @@ def test_tuv_min_none_tuv_filtered_out():
 
 
 # --- Case sensitivity on non-engine fields ---
+
 
 def test_source_filter_case_sensitive():
     listings = [
@@ -350,12 +464,18 @@ def test_source_filter_case_sensitive():
 
 # --- Combined: score_min with price AND mileage None ---
 
+
 def test_price_mileage_none_not_crash():
     listings = [
         Listing(
-            id="no_pm", source="Kleinanzeigen", source_listing_id="no_pm",
-            url="https://example.test/no_pm", title="No Price/Mileage",
-            price_eur=None, mileage_km=None, score=50,
+            id="no_pm",
+            source="Kleinanzeigen",
+            source_listing_id="no_pm",
+            url="https://example.test/no_pm",
+            title="No Price/Mileage",
+            price_eur=None,
+            mileage_km=None,
+            score=50,
         ),
     ]
     result = filter_listings(listings, {"price_min": "10000", "mileage_max": "50000"})
@@ -364,24 +484,28 @@ def test_price_mileage_none_not_crash():
 
 # --- Combined: all available filters simultaneously ---
 
+
 def test_all_filters_combined():
-    result = filter_listings(LISTINGS, {
-        "source": "Kleinanzeigen",
-        "transmission": "manual",
-        "trim": "Z06",
-        "engine": "LS7",
-        "body_style": "Coupé",
-        "price_min": "30000",
-        "price_max": "40000",
-        "mileage_min": "40000",
-        "mileage_max": "60000",
-        "change_type": "new",
-        "risk_free": "true",
-        "score_min": "60",
-        "ez_min": "2005",
-        "ez_max": "2010",
-        "accident_status": "unbekannt",
-        "tuv_min": "2020",
-    })
+    result = filter_listings(
+        LISTINGS,
+        {
+            "source": "Kleinanzeigen",
+            "transmission": "manual",
+            "trim": "Z06",
+            "engine": "LS7",
+            "body_style": "Coupé",
+            "price_min": "30000",
+            "price_max": "40000",
+            "mileage_min": "40000",
+            "mileage_max": "60000",
+            "change_type": "new",
+            "risk_free": "true",
+            "score_min": "60",
+            "ez_min": "2005",
+            "ez_max": "2010",
+            "accident_status": "unbekannt",
+            "tuv_min": "2020",
+        },
+    )
     assert len(result) == 1
     assert result[0].id == "a"

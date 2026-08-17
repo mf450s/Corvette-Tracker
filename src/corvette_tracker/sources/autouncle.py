@@ -14,7 +14,7 @@ DEFAULT_URL = "https://www.autouncle.de/de/gebrauchtwagen/Chevrolet/Corvette"
 
 
 def _text(node) -> str:
-    return " ".join(node.get_text(" ", strip=True).split()) if node else ""
+    return " ".join(str(node.get_text(" ", strip=True)).split()) if node else ""
 
 
 def _price_text(text: str) -> str:
@@ -34,7 +34,7 @@ def parse_autouncle_search(html: str, base_url: str = DEFAULT_URL) -> list[Listi
         href = link.get("href")
         if not href:
             continue
-        url = urljoin(base_url, href)
+        url = urljoin(base_url, str(href))
         if url in seen_urls:
             continue
         seen_urls.add(url)
@@ -43,7 +43,7 @@ def parse_autouncle_search(html: str, base_url: str = DEFAULT_URL) -> list[Listi
         text = _text(link)
         if "corvette" not in text.lower():
             continue
-        title = text.split("|")[0].replace("Gebraucht", "").strip(" ()\"") or "Chevrolet Corvette"
+        title = text.split("|")[0].replace("Gebraucht", "").strip(' ()"') or "Chevrolet Corvette"
 
         # Price from the dedicated price element outside the <a> tag
         price_el = article.select_one("._i2QOc")
@@ -54,12 +54,13 @@ def parse_autouncle_search(html: str, base_url: str = DEFAULT_URL) -> list[Listi
         img = article.select_one("._v1SHB img")
         if img:
             src = img.get("src") or img.get("data-src")
-            if src and not src.startswith("data:"):
-                image_urls.append(urljoin(base_url, src))
+            src_text = str(src or "")
+            if src_text and not src_text.startswith("data:"):
+                image_urls.append(urljoin(base_url, src_text))
 
         listing = normalize_listing(
             source=SOURCE,
-            source_listing_id=href.rstrip("/").split("/")[-1],
+            source_listing_id=str(href).rstrip("/").split("/")[-1],
             url=url,
             title=title,
             description=text,

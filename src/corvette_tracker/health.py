@@ -6,10 +6,11 @@ import re
 import time
 import urllib.error
 import urllib.request
-from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urljoin, urlparse
+
+from typing_extensions import override
 
 from .storage import TrackerStore
 
@@ -25,12 +26,15 @@ CHECK_TIMEOUT = 10
 DOMAIN_DELAY_SECONDS = 1.0
 
 # Phrases that indicate a listing is no longer available (checked in body text)
-NOT_FOUND_PATTERNS: list[re.Pattern] = [
+NOT_FOUND_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"anzeige\s+(?:wurde\s+)?(?:leider\s+)?nicht\s+gefunden", re.I),
     re.compile(r"die\s+gesuchte\s+anzeige\s+ist\s+nicht\s+mehr\s+vorhanden", re.I),
     re.compile(r"<title>[^<]*nicht\s+gefunden[^<]*</title>", re.I | re.S),
     re.compile(r"<h1[^>]*>[^<]*nicht\s+gefunden[^<]*</h1>", re.I | re.S),
-    re.compile(r"dieses\s+(?:angebot|inserat|objekt)\s+(?:ist\s+)?nicht\s+mehr\s+(?:vorhanden|verfügbar|verfuegbar)", re.I),
+    re.compile(
+        r"dieses\s+(?:angebot|inserat|objekt)\s+(?:ist\s+)?nicht\s+mehr\s+(?:vorhanden|verfügbar|verfuegbar)",
+        re.I,
+    ),
     re.compile(r"listing\s+(?:is\s+)?(?:no\s+longer\s+)?not\s+found", re.I),
     re.compile(r"offer\s+(?:is\s+)?(?:no\s+longer\s+)?(?:available|found)", re.I),
     re.compile(r"page\s+not\s+found", re.I),
@@ -57,10 +61,13 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     and report the listing as offline instead of following through.
     """
 
+    @override
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         log.debug(
             "Redirect detected for %s -> %s (HTTP %s) — not following",
-            req.full_url, newurl, code,
+            req.full_url,
+            newurl,
+            code,
         )
         return None  # Don't follow redirects
 
@@ -94,6 +101,7 @@ def _has_positive_listing_signal(body: str, url: str) -> bool:
     field that matches the checked URL (trailing slash ignored), and have an
     ``offers.availability`` value containing ``InStock``.
     """
+
     def norm(u: str) -> str:
         return u.strip().rstrip("/").lower()
 
@@ -192,10 +200,10 @@ def _url_identity_token(url: str) -> str | None:
         return match.group(0).lower()
     match = re.search(r"/(\d+)-216-", urlparse(url).path)
     if match:
-        return match.group(1)
+        return str(match.group(1))
     match = re.search(r"[?&]id=(\d+)", url)
     if match:
-        return match.group(1)
+        return str(match.group(1))
     return None
 
 
@@ -206,7 +214,9 @@ def _same_listing_identity(url_a: str, url_b: str) -> bool:
     return bool(token_a and token_b and token_a == token_b)
 
 
-def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, str | None, str | None]:
+def _check_single_url_full(
+    url: str, *, _depth: int = 0
+) -> tuple[int | None, str | None, str | None]:
     """Check whether a single URL is reachable and still points to a listing.
 
     Tries HEAD first, falls back to GET if the server rejects HEAD.
@@ -246,10 +256,13 @@ def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, st
                         if _same_listing_identity(url, target):
                             log.info(
                                 "Listing %s -> canonical %s (HTTP %s) — following",
-                                url, target, status,
+                                url,
+                                target,
+                                status,
                             )
                             sub_status, sub_error, sub_final = _check_single_url_full(
-                                target, _depth=_depth + 1,
+                                target,
+                                _depth=_depth + 1,
                             )
                             if sub_status is not None and 200 <= sub_status < 300:
                                 return sub_status, sub_error, sub_final or target
@@ -257,13 +270,14 @@ def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, st
                             return sub_status, sub_error, target
                     log.info(
                         "Listing %s returned HTTP %s (redirect) — marking offline",
-                        url, status,
+                        url,
+                        status,
                     )
-                    return status, None, None
+                    return int(status), None, None
 
                 # Non-2xx status — offline
                 if status < 200 or status >= 300:
-                    return status, None, None
+                    return int(status), None, None
 
                 # 2xx from HEAD: URL is reachable, but we need GET to
                 # check the body for 'not found' content. Fall through.
@@ -281,17 +295,21 @@ def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, st
                 if _is_not_found_body(body):
                     # Kleinanzeigen's deleted/paused veil markers are strong
                     # offline signals and must win over any structured data.
-                    if re.search(r"showDeletedVeil\s*:\s*true", body) or re.search(r"showPausedVeil\s*:\s*true", body):
+                    if re.search(r"showDeletedVeil\s*:\s*true", body) or re.search(
+                        r"showPausedVeil\s*:\s*true", body
+                    ):
                         log.info(
                             "Listing %s returned HTTP 200 with veil/deletion marker — marking offline",
                             url,
                         )
                         return 410, "not found body", None
-                    if _has_positive_listing_signal(body, url) or _has_kleinanzeigen_live_veil(body):
+                    if _has_positive_listing_signal(body, url) or _has_kleinanzeigen_live_veil(
+                        body
+                    ):
                         log.info(
                             "body has not-found strings but JSON-LD/veil markers indicate live listing — online",
                         )
-                        return status, None, url
+                        return int(status), None, url
                     log.info(
                         "Listing %s returned HTTP 200 but body indicates 'not found' — marking offline",
                         url,
@@ -303,7 +321,7 @@ def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, st
                         url,
                     )
 
-                return status, None, url
+                return int(status), None, url
 
         except urllib.error.HTTPError as exc:
             # Redirects surface as HTTPError because the no-redirect handler
@@ -316,10 +334,13 @@ def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, st
                     if _same_listing_identity(url, target):
                         log.info(
                             "Listing %s -> canonical %s (HTTP %s) — following",
-                            url, target, exc.code,
+                            url,
+                            target,
+                            exc.code,
                         )
                         sub_status, sub_error, sub_final = _check_single_url_full(
-                            target, _depth=_depth + 1,
+                            target,
+                            _depth=_depth + 1,
                         )
                         if sub_status is not None and 200 <= sub_status < 300:
                             return sub_status, sub_error, sub_final or target
@@ -327,7 +348,8 @@ def _check_single_url_full(url: str, *, _depth: int = 0) -> tuple[int | None, st
                         return sub_status, sub_error, target
                 log.info(
                     "Listing %s returned HTTP %s (redirect) — marking offline",
-                    url, exc.code,
+                    url,
+                    exc.code,
                 )
                 return exc.code, None, None
             # HEAD method rejected (405) -> try GET
@@ -381,7 +403,7 @@ def check_stale_offers(
         Summary dict with counts of online/offline/failed checks.
     """
     listings = store.list_active()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     now_iso = now.isoformat()
 
     checked = 0
@@ -389,7 +411,7 @@ def check_stale_offers(
     online_count = 0
     offline_count = 0
     failed_count = 0
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
 
     for listing in listings:
         # Check cache freshness
@@ -399,7 +421,7 @@ def check_stale_offers(
                 checked_at = datetime.fromisoformat(cached["last_checked_at"])
                 # Naive vs aware: SQLite stores naive timestamps
                 if checked_at.tzinfo is None:
-                    checked_at = checked_at.replace(tzinfo=timezone.utc)
+                    checked_at = checked_at.replace(tzinfo=UTC)
                 age = (now - checked_at).total_seconds()
                 if age < CACHE_TTL_SECONDS:
                     skipped += 1
@@ -443,13 +465,15 @@ def check_stale_offers(
             # Connection error, timeout, or other network failure
             failed_count += 1
 
-        results.append({
-            "listing_id": listing.id,
-            "url": listing.url,
-            "is_online": is_online,
-            "http_status": http_status,
-            "error": error,
-        })
+        results.append(
+            {
+                "listing_id": listing.id,
+                "url": listing.url,
+                "is_online": is_online,
+                "http_status": http_status,
+                "error": error,
+            }
+        )
 
     return {
         "checked": checked,
@@ -474,44 +498,48 @@ def get_cached_status(store: TrackerStore) -> dict[str, Any]:
     listing_map = {l.id: l for l in listings}
     statuses = store.list_online_statuses(limit=len(listings) + 1)
 
-    offers: list[dict] = []
+    offers: list[dict[str, Any]] = []
     for row in statuses:
         lid = row["listing_id"]
         listing = listing_map.get(lid)
-        offers.append({
-            "listing_id": lid,
-            "url": listing.url if listing else None,
-            "title": listing.title if listing else None,
-            "source": listing.source if listing else None,
-            "is_online": bool(row["is_online"]),
-            "last_checked_at": row["last_checked_at"],
-            "http_status": row["http_status"],
-            "error_message": row["error_message"],
-        })
+        offers.append(
+            {
+                "listing_id": lid,
+                "url": listing.url if listing else None,
+                "title": listing.title if listing else None,
+                "source": listing.source if listing else None,
+                "is_online": bool(row["is_online"]),
+                "last_checked_at": row["last_checked_at"],
+                "http_status": row["http_status"],
+                "error_message": row["error_message"],
+            }
+        )
 
     # Add listings with no status record
     known_ids = {r["listing_id"] for r in statuses}
     for lid in active_ids - known_ids:
         listing = listing_map[lid]
-        offers.append({
-            "listing_id": lid,
-            "url": listing.url,
-            "title": listing.title,
-            "source": listing.source,
-            "is_online": True,  # assume online until checked
-            "last_checked_at": None,
-            "http_status": None,
-            "error_message": None,
-        })
+        offers.append(
+            {
+                "listing_id": lid,
+                "url": listing.url,
+                "title": listing.title,
+                "source": listing.source,
+                "is_online": True,  # assume online until checked
+                "last_checked_at": None,
+                "http_status": None,
+                "error_message": None,
+            }
+        )
 
     # Calculate earliest expiry
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     min_remaining = CACHE_TTL_SECONDS
     for row in statuses:
         try:
             checked_at = datetime.fromisoformat(row["last_checked_at"])
             if checked_at.tzinfo is None:
-                checked_at = checked_at.replace(tzinfo=timezone.utc)
+                checked_at = checked_at.replace(tzinfo=UTC)
             elapsed = (now - checked_at).total_seconds()
             remaining = CACHE_TTL_SECONDS - elapsed
             min_remaining = min(min_remaining, remaining)

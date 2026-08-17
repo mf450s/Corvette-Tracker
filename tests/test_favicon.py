@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from corvette_tracker.favicon import favicon_data_uri
-from corvette_tracker.web import render_app_shell
 from corvette_tracker.feed import render_html_site
+from corvette_tracker.web import render_app_shell
 
 
 def test_favicon_data_uri_returns_svg_data_uri() -> None:
@@ -18,7 +18,7 @@ def test_app_shell_contains_favicon_link() -> None:
 
 
 def test_html_site_contains_favicon_link() -> None:
-    # Minimal‑Payload, das render_html_site ohne Exception verarbeitet.
+    # Minimal-Payload, das render_html_site ohne Exception verarbeitet.
     payload = {
         "generated_at": "2025-01-01T00:00:00+00:00",
         "summary": {
