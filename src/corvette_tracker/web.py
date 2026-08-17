@@ -672,9 +672,7 @@ function sortListings(listings) {{
     const stb = sb === 'online' ? 1 : sb === 'offline' ? 2 : 3;
     if (order === 'status-online') return sta - stb;
     if (order === 'status-offline') return stb - sta;
-    if (order === 'score-asc') return Number(a.score || 0) - Number(b.score || 0);
-    if (order === 'mein-score-desc') return (myScoreMap.get(b.id) ?? -1) - (myScoreMap.get(a.id) ?? -1);
-    if (order === 'mein-score-asc') return (myScoreMap.get(a.id) ?? 101) - (myScoreMap.get(b.id) ?? 101);
+    if (order === 'score-asc') return (myScoreMap.get(a.id) ?? 0) - (myScoreMap.get(b.id) ?? 0);
     if (order === 'price-asc') return Number(a.price_eur || 999999999) - Number(b.price_eur || 999999999);
     if (order === 'price-desc') return Number(b.price_eur || 0) - Number(a.price_eur || 0);
     if (order === 'mileage-asc') return Number(a.mileage_km || 999999999) - Number(b.mileage_km || 999999999);
