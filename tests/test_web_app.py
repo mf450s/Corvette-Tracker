@@ -243,11 +243,11 @@ def test_web_shell_contains_priorities_picker():
     assert "priority-weightbar" in html
     assert "priorities-reset" in html
     # Typ-A-Slider (Wichtigkeit 0-5) mit Default 3
-    for key in ("price_eur", "mileage_km", "model_year", "accident", "eu_spec"):
+    for key in ("price_eur", "mileage_km", "model_year", "accident", "eu_spec", "power_hp"):
         assert f'data-priority-key="{key}"' in html
         assert 'data-priority-type="a" min="0" max="5" step="1" value="3"' in html
     # Typ-B-Slider (Richtung -1/0/+1) mit Default 0
-    for key in ("transmission", "body_style", "power_hp"):
+    for key in ("transmission", "body_style"):
         assert f'data-priority-key="{key}"' in html
         assert 'data-priority-type="b" data-left-label=' in html
         assert 'data-right-label=' in html
@@ -260,6 +260,7 @@ def test_web_shell_contains_priorities_picker():
     assert "Cabrio" in html
     assert "weniger PS" in html
     assert "mehr PS" in html
+    assert 'data-priority-dir="power_hp"' in html
     # Persönlicher Score: JS-Berechnung, Badge, Sortieroptionen
     assert "computeMyScores" in html
     assert "myScoreFor" in html
