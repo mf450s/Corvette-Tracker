@@ -571,7 +571,7 @@ def render_app_shell() -> str:
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">EU-Spec</span><span class="priority-live" data-priority-live="eu_spec">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="eu_spec" data-priority-type="a" min="0" max="5" step="1" value="3"></label>
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Getriebe</span><span class="priority-live" data-priority-live="transmission">egal</span></span><input type="range" class="priority-slider" data-priority-key="transmission" data-priority-type="b" data-left-label="Schalter" data-right-label="Automatik" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="transmission" data-dir="-1">Schalter</span><span class="priority-dir-label active" data-dir-label="transmission" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="transmission" data-dir="1">Automatik</span></span></label>
     <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Karosserie</span><span class="priority-live" data-priority-live="body_style">egal</span></span><input type="range" class="priority-slider" data-priority-key="body_style" data-priority-type="b" data-left-label="Coupé" data-right-label="Cabrio" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="body_style" data-dir="-1">Coupé</span><span class="priority-dir-label active" data-dir-label="body_style" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="body_style" data-dir="1">Cabrio</span></span></label>
-    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Leistung</span><span class="priority-live" data-priority-live="power_hp">egal</span></span><input type="range" class="priority-slider" data-priority-key="power_hp" data-priority-type="b" data-left-label="weniger PS" data-right-label="mehr PS" min="-1" max="1" step="1" value="0"><span class="priority-dir-labels"><span class="priority-dir-label" data-dir-label="power_hp" data-dir="-1">weniger PS</span><span class="priority-dir-label active" data-dir-label="power_hp" data-dir="0">egal</span><span class="priority-dir-label" data-dir-label="power_hp" data-dir="1">mehr PS</span></span></label>
+    <label class="priority-field"><span class="priority-field-head"><span class="priority-name">Leistung</span><span class="priority-live" data-priority-live="power_hp">Wichtig</span></span><input type="range" class="priority-slider" data-priority-key="power_hp" data-priority-type="a" min="0" max="5" step="1" value="3"><span class="priority-dir-labels"><button type="button" class="priority-dir-label" data-priority-dir="power_hp" data-dir="-1">weniger PS</button><button type="button" class="priority-dir-label active" data-priority-dir="power_hp" data-dir="0">egal</button><button type="button" class="priority-dir-label" data-priority-dir="power_hp" data-dir="1">mehr PS</button></span></label>
   </div>
   <div class="priority-weightbar" id="priority-weightbar"></div>
 </section><section class="panel list-toolbar" id="filter-bar">
@@ -952,10 +952,10 @@ async function unmergeOffer(id) {{
 }}
 // ── Meine Prioritäten: Picker + persönlicher Score ────────────────────────
 const PRIORITY_A_LABELS = {{0:'Nicht wichtig',1:'Wenig wichtig',2:'Mäßig wichtig',3:'Wichtig',4:'Sehr wichtig',5:'Kritisch'}};
-const PRIORITY_A_NAMES = {{price_eur:'Preis', mileage_km:'Laufleistung', model_year:'Baujahr', accident:'Unfallfrei', eu_spec:'EU-Spec'}};
-const PRIORITY_DEFAULTS = {{price_eur:3, mileage_km:3, model_year:3, accident:3, eu_spec:3, transmission:0, body_style:0, power_hp:0}};
+const PRIORITY_A_NAMES = {{price_eur:'Preis', mileage_km:'Laufleistung', model_year:'Baujahr', accident:'Unfallfrei', eu_spec:'EU-Spec', power_hp:'Leistung'}};
+const PRIORITY_DEFAULTS = {{price_eur:3, mileage_km:3, model_year:3, accident:3, eu_spec:3, transmission:0, body_style:0, power_hp:3, power_hp_dir:0}};
 const PRIORITY_STORAGE_KEY = 'corvette_priorities_v1';
-const PRIORITY_A_KEYS = ['price_eur','mileage_km','model_year','accident','eu_spec'];
+const PRIORITY_A_KEYS = ['price_eur','mileage_km','model_year','accident','eu_spec','power_hp'];
 const PRIORITY_SEG_COLORS = ['#ef4444','#f59e0b','#eab308','#22c55e','#3b82f6'];
 let priorityValues = Object.assign({{}}, PRIORITY_DEFAULTS);
 
@@ -986,6 +986,11 @@ function updatePriorityLabels() {{
         label.classList.toggle('active', parseInt(label.dataset.dir, 10) === v);
       }});
     }}
+  }});
+  document.querySelectorAll('[data-priority-dir]').forEach(btn => {{
+    const key = btn.dataset.priorityDir;
+    const dir = getPriorityValue(key + '_dir');
+    btn.classList.toggle('active', parseInt(btn.dataset.dir, 10) === dir);
   }});
 }}
 function priorityWeights() {{
@@ -1065,9 +1070,15 @@ function factorNorm(key, item, extents) {{
   const t = (n - extents.min) / span;
   if (key === 'price_eur' || key === 'mileage_km') return Math.min(1, Math.max(0, 1 - t));
   if (key === 'model_year') return Math.min(1, Math.max(0, t));
+  if (key === 'power_hp') {{
+    const dir = getPriorityValue('power_hp_dir');
+    if (dir > 0) return Math.min(1, Math.max(0, t));
+    if (dir < 0) return Math.min(1, Math.max(0, 1 - t));
+    return 0.5;
+  }}
   return 0;
 }}
-function typeBPoints(item, hpCut) {{
+function typeBPoints(item) {{
   let total = 0;
   const tp = getPriorityValue('transmission');
   if (tp !== 0) {{
@@ -1081,20 +1092,9 @@ function typeBPoints(item, hpCut) {{
     if (b === 'Coupé') total += (bp < 0 ? 10 : -10);
     else if (b === 'Cabrio') total += (bp > 0 ? 10 : -10);
   }}
-  const ep = getPriorityValue('power_hp');
-  if (ep !== 0) {{
-    const rawHp = item.power_hp;
-    if (rawHp != null && rawHp !== '') {{
-      const hp = Number(rawHp);
-      if (!Number.isNaN(hp) && hpCut != null) {{
-        if (hp >= hpCut) total += (ep > 0 ? 10 : -10);
-        else total += (ep < 0 ? 10 : -10);
-      }}
-    }}
-  }}
   return total;
 }}
-function myScoreFor(item, weights, extents, hpCut) {{
+function myScoreFor(item, weights, extents) {{
   let typeA = 50;
   if (weights) {{
     let acc = 0;
@@ -1105,27 +1105,14 @@ function myScoreFor(item, weights, extents, hpCut) {{
     }});
     typeA = acc * 100;
   }}
-  return Math.min(100, Math.max(0, Math.round(typeA + typeBPoints(item, hpCut))));
-}}
-function medianPowerHp(listings) {{
-  const values = listings
-    .map(item => item.power_hp)
-    .filter(raw => raw != null && raw !== '')
-    .map(Number)
-    .filter(value => !Number.isNaN(value));
-  if (values.length === 0) return null;
-  values.sort((a, b) => a - b);
-  const mid = Math.floor(values.length / 2);
-  if (values.length % 2 === 1) return values[mid];
-  return (values[mid - 1] + values[mid]) / 2;
+  return Math.min(100, Math.max(0, Math.round(typeA + typeBPoints(item))));
 }}
 function computeMyScores(listings) {{
   const weights = priorityWeights();
   const extents = {{}};
   PRIORITY_A_KEYS.forEach(key => {{ extents[key] = factorExtents(listings, key); }});
-  const hpCut = medianPowerHp(listings);
   const map = new Map();
-  listings.forEach(item => {{ map.set(item.id, myScoreFor(item, weights, extents, hpCut)); }});
+  listings.forEach(item => {{ map.set(item.id, myScoreFor(item, weights, extents)); }});
   return map;
 }}
 function loadPriorities() {{
@@ -1345,6 +1332,15 @@ document.getElementById('hide-risk').addEventListener('change', renderListings);
 document.querySelectorAll('[data-priority-key]').forEach(el => {{
   el.addEventListener('input', function() {{
     readPrioritySliders();
+    persistPriorities();
+    updatePriorityLabels();
+    priorityWeightBar();
+    renderListings();
+  }});
+}});
+document.querySelectorAll('[data-priority-dir]').forEach(btn => {{
+  btn.addEventListener('click', function() {{
+    priorityValues[this.dataset.priorityDir + '_dir'] = parseInt(this.dataset.dir, 10);
     persistPriorities();
     updatePriorityLabels();
     priorityWeightBar();
