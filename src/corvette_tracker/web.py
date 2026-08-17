@@ -987,6 +987,11 @@ function updatePriorityLabels() {{
       }});
     }}
   }});
+  document.querySelectorAll('[data-priority-dir]').forEach(btn => {{
+    const key = btn.dataset.priorityDir;
+    const dir = getPriorityValue(key + '_dir');
+    btn.classList.toggle('active', parseInt(btn.dataset.dir, 10) === dir);
+  }});
 }}
 function priorityWeights() {{
   const active = PRIORITY_A_KEYS.filter(key => getPriorityValue(key) > 0);
@@ -1327,6 +1332,15 @@ document.getElementById('hide-risk').addEventListener('change', renderListings);
 document.querySelectorAll('[data-priority-key]').forEach(el => {{
   el.addEventListener('input', function() {{
     readPrioritySliders();
+    persistPriorities();
+    updatePriorityLabels();
+    priorityWeightBar();
+    renderListings();
+  }});
+}});
+document.querySelectorAll('[data-priority-dir]').forEach(btn => {{
+  btn.addEventListener('click', function() {{
+    priorityValues[this.dataset.priorityDir + '_dir'] = parseInt(this.dataset.dir, 10);
     persistPriorities();
     updatePriorityLabels();
     priorityWeightBar();
