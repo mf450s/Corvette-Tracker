@@ -730,11 +730,11 @@ function renderOverviewCard(item, group) {{
   const offerUrl = item.url || detailUrl;
   const st = getStatus(item.id);
   const myScore = myScoreMap.get(item.id);
-  const myBadge = myScore != null ? `<span class="score-badge mine-badge">Mein: ${{myScore}}</span>` : '';
+  const badgeScore = myScore != null ? `${{myScore}}%` : '–';
   const extraBadge = group && group.offerCount > 1 ? `<span class="offer-badge">${{group.offerCount}} Angebote · ${{esc(group.sourceSummary)}}</span>` : '';
   const offerLinks = group && group.offerCount > 1 ? '<p class="offer-links muted">Angebote: ' + group.members.map(m => '<a href="' + esc(m.url) + '" target="_blank" rel="noreferrer">' + esc(m.source) + '</a>').join(' · ') + '</p>' : '';
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}" data-status="${{st}}">
-    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{esc(item.score ?? 0)}}%</span>${{myBadge}}${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
+    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{badgeScore}}</span>${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
     <div class="body">
       <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}} &middot; Score ${{esc(item.score)}}</p>
       ${{extraBadge}}
