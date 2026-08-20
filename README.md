@@ -44,39 +44,34 @@ source connector
 ## Setup
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[dev]'
+uv sync --locked
 cp config.example.yaml config.yaml
 ```
 
 ## Live-Lauf
 
 ```bash
-.venv/bin/python -m corvette_tracker.cli run --config config.yaml --output-dir .
+uv run corvette-tracker run --config config.yaml --output-dir .
 ```
 
 Ohne explizite Config geht auch:
 
 ```bash
-.venv/bin/python -m corvette_tracker.cli run --output-dir .
+uv run corvette-tracker run --output-dir .
 ```
 
 ## Docker / WebUI
 
-Das Projekt kann direkt als kombinierter Frontend+Backend-Container laufen. Die WebUI ist danach unter `http://localhost:8096` erreichbar und zeigt die Listings aus der SQLite-Datenbank an. Über die WebUI können einzelne Felder nachgebessert werden; diese manuellen Overrides werden in SQLite gespeichert und bei späteren Crawls nicht mehr durch Parser-/Quellwerte überschrieben.
+Das Projekt kann direkt als kombinierter Frontend+Backend-Container laufen. Die WebUI ist danach unter `http://localhost:8096` erreichbar und zeigt die Listings aus der SQLite-Datenbank an. GET-Endpunkte sind lesbar. Mutierende POST- und PATCH-Endpunkte benötigen `CORVETTE_TRACKER_ADMIN_USER` und `CORVETTE_TRACKER_ADMIN_PASSWORD` über HTTP Basic Auth.
 
 ```bash
 docker build -t corvette-tracker:local .
 docker run --rm -p 8096:8096 \
   -v corvette-tracker-data:/app/runtime \
   -e CORVETTE_TRACKER_CRON_INTERVAL=6h \
+  -e CORVETTE_TRACKER_ADMIN_USER=admin \
+  -e CORVETTE_TRACKER_ADMIN_PASSWORD='set-a-local-secret' \
   corvette-tracker:local
-```
-
-Oder mit Compose:
-
-```bash
-docker compose up --build
 ```
 
 Wichtige Docker-ENV-Variablen:
@@ -89,11 +84,13 @@ Wichtige Docker-ENV-Variablen:
 | `CORVETTE_TRACKER_OUTPUT_DIR` | `/app/runtime` | Persistente Runtime-Dateien, Exporte und Website |
 | `CORVETTE_TRACKER_DATABASE` | `/app/runtime/data/corvette_tracker.sqlite` | SQLite-Datei inkl. Snapshots und manueller Overrides |
 | `CORVETTE_TRACKER_CONFIG` | `/app/config.yaml` | YAML-Config; kann per Volume überschrieben werden |
+| `CORVETTE_TRACKER_ADMIN_USER` | nicht gesetzt | Benutzername für mutierende POST-/PATCH-Requests |
+| `CORVETTE_TRACKER_ADMIN_PASSWORD` | nicht gesetzt | Passwort für mutierende POST-/PATCH-Requests |
 
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest -q
+uv run pytest -q
 ```
 
 CI läuft auf Pull Requests und Pushes gegen `development`.
@@ -113,14 +110,7 @@ data/corvette_tracker.sqlite    # lokale Historie / Snapshots
 
 ## Statische Website
 
-Öffentliche Bereitstellung auf the deployment host:
-
-- Domain: `https://<private-domain>/`
-- Caddy: `<private-caddy-config>`
-- systemd: `<private-service-unit>`
-- Upstream: `<private-upstream>`
-- the authentication proxy: bewusst nicht vorgeschaltet
-- Serviert wird nur `site/`, nicht das komplette Repository.
+Die Anwendung kann die generierte `site/`-Website separat ausliefern. Deployment-Ziele, interne Pfade, Domains und Zugangsdaten gehören in die private Betriebsdokumentation, nicht in dieses Repository. Generierte Website- und Exportdateien bleiben lokale Laufzeit-Artefakte und werden nicht versioniert.
 
 Die Website zeigt pro Listing:
 

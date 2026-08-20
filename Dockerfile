@@ -23,7 +23,6 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 RUN addgroup --system corvette && adduser --system --ingroup corvette corvette \
     && mkdir -p /app/runtime /app/runtime/data /app/runtime/feed /app/runtime/site \
-    && chmod 777 /app/runtime /app/runtime/feed /app/runtime/site \
     && chown -R corvette:corvette /app
 COPY --from=builder /dist/*.whl /tmp/
 RUN python -m pip install /tmp/*.whl \

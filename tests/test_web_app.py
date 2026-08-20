@@ -1,3 +1,4 @@
+import base64
 import json
 import threading
 import urllib.error
@@ -5,9 +6,20 @@ import urllib.request
 from dataclasses import fields
 from pathlib import Path
 
+import pytest
+
 from corvette_tracker.models import Listing
 from corvette_tracker.storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, TrackerStore
 from corvette_tracker.web import TrackerWebApp, parse_interval_seconds, render_app_shell
+
+TEST_ADMIN_USER = "test-admin"
+TEST_ADMIN_PASSWORD = "test-password"
+
+
+@pytest.fixture(autouse=True)
+def web_auth_env(monkeypatch):
+    monkeypatch.setenv("CORVETTE_TRACKER_ADMIN_USER", TEST_ADMIN_USER)
+    monkeypatch.setenv("CORVETTE_TRACKER_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
 
 
 def make_listing():
@@ -24,13 +36,40 @@ def make_listing():
     )
 
 
-def request_json(url: str, method="GET", payload=None):
+def request_json(url: str, method="GET", payload=None, auth=True):
     data = None if payload is None else json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data, method=method, headers={"Content-Type": "application/json"}
-    )
+    headers = {"Content-Type": "application/json"}
+    if auth:
+        credentials = f"{TEST_ADMIN_USER}:{TEST_ADMIN_PASSWORD}"
+        encoded = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
+        headers["Authorization"] = f"Basic {encoded}"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=5) as response:
         return response.status, json.loads(response.read().decode("utf-8"))
+
+
+def request_error(url: str, method="GET", payload=None, auth=True):
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if auth:
+        credentials = f"{TEST_ADMIN_USER}:{TEST_ADMIN_PASSWORD}"
+        encoded = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
+        headers["Authorization"] = f"Basic {encoded}"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:
+            return (
+                response.status,
+                dict(response.headers),
+                json.loads(response.read().decode("utf-8")),
+            )
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8")
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            payload = body
+        return exc.code, dict(exc.headers), payload
 
 
 def test_parse_interval_seconds_accepts_docker_env_values():
@@ -754,6 +793,84 @@ def test_patch_protected_field_rejected(tmp_path: Path):
             assert "Unsupported override" in exc.read().decode("utf-8")
         else:
             raise AssertionError("protected field should return 400")
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_post_run_without_credentials_returns_503(tmp_path, monkeypatch):
+    monkeypatch.delenv("CORVETTE_TRACKER_ADMIN_USER", raising=False)
+    monkeypatch.delenv("CORVETTE_TRACKER_ADMIN_PASSWORD", raising=False)
+    app = TrackerWebApp(store=TrackerStore(tmp_path / "tracker.sqlite"), output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, _, payload = request_error(f"{base_url}/api/run", method="POST", auth=False)
+        assert status == 503
+        assert payload["error"] == "mutating API authentication is not configured"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_patch_without_auth_returns_401(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, headers, _ = request_error(
+            f"{base_url}/api/listings/autoscout24_123",
+            method="PATCH",
+            payload={"engine": "LS3"},
+            auth=False,
+        )
+        assert status == 401
+        assert "Basic" in headers.get("WWW-Authenticate", "")
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_get_listings_without_auth_works(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = request_json(f"{base_url}/api/listings", auth=False)
+        assert status == 200
+        assert payload["listings"][0]["id"] == "autoscout24_123"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_patch_with_auth_succeeds(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, updated = request_json(
+            f"{base_url}/api/listings/autoscout24_123",
+            method="PATCH",
+            payload={"engine": "LS3"},
+            auth=True,
+        )
+        assert status == 200
+        assert updated["listing"]["engine"] == "LS3"
     finally:
         server.shutdown()
         thread.join(timeout=5)

@@ -14,4 +14,8 @@ feed/latest.md
 feed/archive/*.md
 data/exports/*.json
 data/exports/*.csv
+index.html
+data/corvettes.db
+build/
+.worktrees/
 .aider*

@@ -23,8 +23,12 @@ jobs:
           python-version: '3.13'
       - name: Install
         run: pip install uv && uv sync --locked
-      - name: Test
-        run: uv run pytest -q
+      - name: Quality gates
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uvx ty check src
+          uv run pytest -q
 
   docker-build:
     runs-on: ubuntu-latest

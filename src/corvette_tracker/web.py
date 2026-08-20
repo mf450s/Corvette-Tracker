@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import hmac
 import html
 import json
 import os
@@ -70,6 +73,8 @@ class TrackerWebApp:
         self.output_dir = Path(output_dir)
         self.run_callback = run_callback
         self.config_path = Path(config_path) if config_path else self.output_dir / "config.yaml"
+        self.admin_user = os.getenv("CORVETTE_TRACKER_ADMIN_USER")
+        self.admin_password = os.getenv("CORVETTE_TRACKER_ADMIN_PASSWORD")
         self.last_run: dict[str, Any] | None = None
         self.run_lock = threading.Lock()
 
@@ -194,6 +199,41 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         print(f"{self.address_string()} - {format % args}")
 
+    def _require_mutation_auth(self) -> bool:
+        user = self.tracker_app.admin_user
+        password = self.tracker_app.admin_password
+        if not user or not password:
+            self._send_json(
+                {"error": "mutating API authentication is not configured"},
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+            return False
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Basic "):
+            self._send_unauthorized()
+            return False
+        try:
+            decoded = base64.b64decode(auth_header[6:], validate=True).decode("utf-8")
+            provided_user, _, provided_password = decoded.partition(":")
+        except (binascii.Error, UnicodeDecodeError, ValueError):
+            self._send_unauthorized()
+            return False
+        if not hmac.compare_digest(provided_user, user) or not hmac.compare_digest(
+            provided_password, password
+        ):
+            self._send_unauthorized()
+            return False
+        return True
+
+    def _send_unauthorized(self) -> None:
+        body = json.dumps({"error": "authentication required"}, ensure_ascii=False).encode("utf-8")
+        self.send_response(HTTPStatus.UNAUTHORIZED)
+        self.send_header("WWW-Authenticate", 'Basic realm="Corvette Tracker"')
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/":
@@ -255,6 +295,8 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
+        if not self._require_mutation_auth():
+            return
         path = urlparse(self.path).path
         if path == "/api/run":
             exit_code, payload = self.tracker_app.run_once()
@@ -349,6 +391,8 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     def do_PATCH(self) -> None:
+        if not self._require_mutation_auth():
+            return
         path = urlparse(self.path).path
         if path == "/api/scoring":
             try:

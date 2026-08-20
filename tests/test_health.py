@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -739,12 +740,14 @@ def test_web_offers_status_endpoint(tmp_path: Path):
         api_server.shutdown()
 
 
-def test_web_offers_check_endpoint(tmp_path: Path):
+def test_web_offers_check_endpoint(tmp_path: Path, monkeypatch):
     """POST /api/offers/check should trigger a health check and return summary."""
     import urllib.request
 
     from corvette_tracker.web import TrackerWebApp
 
+    monkeypatch.setenv("CORVETTE_TRACKER_ADMIN_USER", "test-admin")
+    monkeypatch.setenv("CORVETTE_TRACKER_ADMIN_PASSWORD", "test-password")
     handler_cls = make_handler(responses={"/check-me": (200, "OK")})
     api_server, api_base = serve(handler_cls)
     try:
@@ -763,7 +766,11 @@ def test_web_offers_check_endpoint(tmp_path: Path):
                 f"{web_base}/api/offers/check",
                 data=data,
                 method="POST",
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Basic "
+                    + base64.b64encode(b"test-admin:test-password").decode("ascii"),
+                },
             )
             with urllib.request.urlopen(req, timeout=10) as response:
                 assert response.status == 200
