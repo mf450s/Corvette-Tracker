@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from corvette_tracker.models import Listing
+from corvette_tracker.storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, TrackerStore
+from corvette_tracker.web import TrackerWebApp, parse_interval_seconds, render_app_shell
 
 TEST_ADMIN_USER = "test-admin"
 TEST_ADMIN_PASSWORD = "test-password"
@@ -18,8 +20,6 @@ TEST_ADMIN_PASSWORD = "test-password"
 def web_auth_env(monkeypatch):
     monkeypatch.setenv("CORVETTE_TRACKER_ADMIN_USER", TEST_ADMIN_USER)
     monkeypatch.setenv("CORVETTE_TRACKER_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
-from corvette_tracker.storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, TrackerStore
-from corvette_tracker.web import TrackerWebApp, parse_interval_seconds, render_app_shell
 
 
 def make_listing():
@@ -43,9 +43,7 @@ def request_json(url: str, method="GET", payload=None, auth=True):
         credentials = f"{TEST_ADMIN_USER}:{TEST_ADMIN_PASSWORD}"
         encoded = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
         headers["Authorization"] = f"Basic {encoded}"
-    req = urllib.request.Request(
-        url, data=data, method=method, headers=headers
-    )
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=5) as response:
         return response.status, json.loads(response.read().decode("utf-8"))
 
@@ -57,12 +55,14 @@ def request_error(url: str, method="GET", payload=None, auth=True):
         credentials = f"{TEST_ADMIN_USER}:{TEST_ADMIN_PASSWORD}"
         encoded = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
         headers["Authorization"] = f"Basic {encoded}"
-    req = urllib.request.Request(
-        url, data=data, method=method, headers=headers
-    )
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=5) as response:
-            return response.status, dict(response.headers), json.loads(response.read().decode("utf-8"))
+            return (
+                response.status,
+                dict(response.headers),
+                json.loads(response.read().decode("utf-8")),
+            )
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8")
         try:
@@ -807,7 +807,7 @@ def test_post_run_without_credentials_returns_503(tmp_path, monkeypatch):
     thread.start()
     base_url = f"http://127.0.0.1:{server.server_address[1]}"
     try:
-        status, headers, payload = request_error(f"{base_url}/api/run", method="POST", auth=False)
+        status, _, payload = request_error(f"{base_url}/api/run", method="POST", auth=False)
         assert status == 503
         assert payload["error"] == "mutating API authentication is not configured"
     finally:
@@ -824,7 +824,7 @@ def test_patch_without_auth_returns_401(tmp_path):
     thread.start()
     base_url = f"http://127.0.0.1:{server.server_address[1]}"
     try:
-        status, headers, payload = request_error(
+        status, headers, _ = request_error(
             f"{base_url}/api/listings/autoscout24_123",
             method="PATCH",
             payload={"engine": "LS3"},
