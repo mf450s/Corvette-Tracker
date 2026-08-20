@@ -290,6 +290,21 @@ def test_web_shell_contains_priorities_picker():
     assert "mein-score-desc" not in html
 
 
+def test_web_shell_lazy_loading_images():
+    html = render_app_shell()
+
+    assert "data-lazy-src" in html
+    assert 'loading="lazy"' in html
+    assert "IntersectionObserver" in html
+    assert 'rootMargin: "300px 0px"' in html
+    assert "unobserve" in html
+    assert "if (!('IntersectionObserver' in window))" in html
+    assert "loadLazyImages" in html
+    assert "loadLazyImages()" in html
+    assert "renderOverviewCard" in html
+    assert html.index("loadLazyImages") > html.index("renderOverviewCard")
+
+
 def test_web_api_returns_404_for_missing_listing(tmp_path: Path):
     app = TrackerWebApp(store=TrackerStore(tmp_path / "tracker.sqlite"), output_dir=tmp_path)
     server = app.make_server("127.0.0.1", 0)
