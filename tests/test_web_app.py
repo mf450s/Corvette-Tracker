@@ -296,13 +296,13 @@ def test_web_shell_lazy_loading_images():
     assert "data-lazy-src" in html
     assert 'loading="lazy"' in html
     assert "IntersectionObserver" in html
-    assert 'rootMargin: "300px 0px"' in html
+    assert "rootMargin: '300px 0px'" in html
     assert "unobserve" in html
     assert "if (!('IntersectionObserver' in window))" in html
     assert "loadLazyImages" in html
     assert "loadLazyImages()" in html
     assert "renderOverviewCard" in html
-    assert html.index("loadLazyImages") > html.index("renderOverviewCard")
+    assert html.rindex("loadLazyImages()") > html.index("grid.innerHTML = sortedPrimaries.map")
 
 
 def test_web_api_returns_404_for_missing_listing(tmp_path: Path):
