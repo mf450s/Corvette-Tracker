@@ -1,6 +1,7 @@
 name: CI and Docker Publish
 
 on:
+  workflow_dispatch:
   push:
     branches: [development, main]
     tags: ['v*']
