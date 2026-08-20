@@ -836,6 +836,27 @@ let myScoreMap = new Map();
 function getStatus(id) {{ return healthStatusMap[id] ?? 'unknown'; }}
 function statusLabel(s) {{ return s === 'online' ? 'Online' : s === 'offline' ? 'Offline' : 'Unbekannt'; }}
 function esc(value) {{ return String(value ?? '').replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}}[c])); }}
+function loadLazyImages() {{
+  const images = document.querySelectorAll('img[data-lazy-src]');
+  if (!('IntersectionObserver' in window)) {{
+    images.forEach(img => {{
+      img.src = img.dataset.lazySrc;
+      img.removeAttribute('data-lazy-src');
+    }});
+    return;
+  }}
+  const observer = new IntersectionObserver((entries, obs) => {{
+    entries.forEach(entry => {{
+      if (entry.isIntersecting) {{
+        const img = entry.target;
+        img.src = img.dataset.lazySrc;
+        img.removeAttribute('data-lazy-src');
+        obs.unobserve(img);
+      }}
+    }});
+  }}, {{ rootMargin: '300px 0px' }});
+  images.forEach(img => observer.observe(img));
+}}
 function fmtEur(value) {{ return value == null ? 'k.A.' : Number(value).toLocaleString('de-DE') + ' €'; }}
 function fmtKm(value) {{ return value == null ? 'k.A.' : Number(value).toLocaleString('de-DE') + ' km'; }}
 function fmtDateTime(value) {{
@@ -965,7 +986,7 @@ function renderOverviewCard(item, group) {{
   const extraBadge = group && group.offerCount > 1 ? `<span class="offer-badge">${{group.offerCount}} Angebote · ${{esc(group.sourceSummary)}}</span>` : '';
   const offerLinks = group && group.offerCount > 1 ? '<p class="offer-links muted">Angebote: ' + group.members.map(m => '<a href="' + esc(m.url) + '" target="_blank" rel="noreferrer">' + esc(m.source) + '</a>').join(' · ') + '</p>' : '';
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}" data-status="${{st}}">
-    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{badgeScore}}</span>${{image ? `<img src="${{esc(image)}}" alt="">` : ''}}</a>
+    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{badgeScore}}</span>${{image ? `<img data-lazy-src="${{esc(image)}}" alt="" loading="lazy">` : ''}}</a>
     <div class="body">
       <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}}</p>
       ${{extraBadge}}
@@ -1442,6 +1463,7 @@ function renderOverviewPage() {{
     const group = groupByPrimaryId.get(item.id);
     return renderOverviewCard(item, group);
   }}).join('') || '<p class="muted">Keine Treffer f&uuml;r diese Filter.</p>';
+  loadLazyImages();
   document.getElementById('visible-count').textContent = sortedPrimaries.length + ' von ' + currentListings.length + ' Angeboten';
 }}
 function currentDetailId() {{
