@@ -65,12 +65,16 @@ uv run corvette-tracker run --output-dir .
 Das Projekt kann direkt als kombinierter Frontend+Backend-Container laufen. Die WebUI ist danach unter `http://localhost:8096` erreichbar und zeigt die Listings aus der SQLite-Datenbank an. GET-Endpunkte sind lesbar. Mutierende POST- und PATCH-Endpunkte benötigen `CORVETTE_TRACKER_ADMIN_USER` und `CORVETTE_TRACKER_ADMIN_PASSWORD` über HTTP Basic Auth.
 
 ```bash
+# credentials vorher nur in der shell oder einem privaten env-file setzen
+export CORVETTE_TRACKER_ADMIN_USER
+export CORVETTE_TRACKER_ADMIN_PASSWORD
+
 docker build -t corvette-tracker:local .
 docker run --rm -p 8096:8096 \
   -v corvette-tracker-data:/app/runtime \
   -e CORVETTE_TRACKER_CRON_INTERVAL=6h \
-  -e CORVETTE_TRACKER_ADMIN_USER=admin \
-  -e CORVETTE_TRACKER_ADMIN_PASSWORD='set-a-local-secret' \
+  --env CORVETTE_TRACKER_ADMIN_USER \
+  --env CORVETTE_TRACKER_ADMIN_PASSWORD \
   corvette-tracker:local
 ```
 
