@@ -10,8 +10,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # Keep the existing GHCR package name stable across the repository rename.
-  IMAGE_NAME: mf450s/corvettetracker-public
+  # Publish under the canonical Corvette Tracker image name.
+  IMAGE_NAME: mf450s/corvette-tracker
 
 jobs:
   test:
