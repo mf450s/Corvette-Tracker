@@ -230,6 +230,18 @@ class TrackerStore:
         _migrate_schema(self.conn)
         self.conn.commit()
 
+    def __enter__(self) -> TrackerStore:
+        """Return a store suitable for scoped database access."""
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        """Close the SQLite connection when leaving a store scope."""
+        self.close()
+
+    def close(self) -> None:
+        """Release the SQLite connection; safe to call more than once."""
+        self.conn.close()
+
     def _overrides_for(self, listing_id: str) -> dict[str, Any]:
         row = self.conn.execute(
             "SELECT payload_json FROM manual_overrides WHERE listing_id = ?", (listing_id,)
@@ -381,6 +393,10 @@ class TrackerStore:
             "SELECT payload_json FROM listings ORDER BY COALESCE(price_eur, 999999999), id"
         ).fetchall()
         return [self._deserialize_listing(row["payload_json"]) for row in rows]
+
+    def list_filtered(self, filters: FilterParams | None = None) -> list[Listing]:
+        """Return persisted listings after applying the public filter contract."""
+        return filter_listings(self.list_active(), filters or {})
 
     def created_at_map(self) -> dict[str, str]:
         rows = self.conn.execute("SELECT id, created_at FROM listings").fetchall()

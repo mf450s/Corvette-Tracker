@@ -1,4 +1,7 @@
+import sqlite3
 from pathlib import Path
+
+import pytest
 
 from corvette_tracker.enums import TrimType
 from corvette_tracker.models import Listing
@@ -22,6 +25,32 @@ def make_listing(id="autoscout24_123", price=54900, mileage=68000):
         risk_flags=[],
         score=80,
     )
+
+
+def test_store_context_manager_closes_connection(tmp_path: Path):
+    db_path = tmp_path / "scoped.sqlite"
+    with TrackerStore(db_path) as store:
+        store.upsert_listings([make_listing()])
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        store.conn.execute("SELECT 1")
+
+
+def test_store_close_is_idempotent(tmp_path: Path):
+    store = TrackerStore(tmp_path / "closed.sqlite")
+
+    store.close()
+    store.close()
+
+
+def test_list_filtered_reuses_public_filter_contract(tmp_path: Path):
+    store = TrackerStore(tmp_path / "filtered.sqlite")
+    store.upsert_listings([make_listing(id="cheap", price=20000)])
+    store.upsert_listings([make_listing(id="expensive", price=80000)])
+
+    result = store.list_filtered({"price_max": "30000"})
+
+    assert [listing.id for listing in result] == ["cheap"]
 
 
 def test_store_marks_first_seen_listing_as_new(tmp_path: Path):
