@@ -10,7 +10,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # Keep the existing GHCR package name stable across the repository rename.
+  IMAGE_NAME: mf450s/corvettetracker-public
 
 jobs:
   test:
