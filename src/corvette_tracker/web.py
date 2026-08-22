@@ -22,7 +22,7 @@ from .feed import build_feed_payload, write_exports
 from .health import check_stale_offers, get_cached_status
 from .presentation import render_app_shell
 from .re_scrape import re_scrape_offer
-from .scoring import apply_score, apply_scores, merge_scoring_config
+from .scoring import apply_scores, merge_scoring_config
 from .storage import FilterParams, TrackerStore, filter_listings
 
 RunCallback = Callable[[], tuple[int, dict[str, Any]]]
@@ -236,10 +236,12 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             filters: FilterParams = {k: v[0] for k, v in parse_qs(parsed.query).items()}
             scoring = self.tracker_app.scoring_config()
-            scored = [
-                apply_score(listing, scoring) for listing in self.tracker_app.store.list_active()
-            ]
-            filtered = filter_listings(scored, filters)
+            non_score_filters = {key: value for key, value in filters.items() if key != "score_min"}
+            filtered = apply_scores(
+                self.tracker_app.store.list_filtered(non_score_filters), scoring
+            )
+            if "score_min" in filters:
+                filtered = filter_listings(filtered, {"score_min": filters["score_min"]})
             created_map = self.tracker_app.store.created_at_map()
             self._send_json(
                 {
@@ -247,7 +249,7 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
                         {"created_at": created_map.get(l.id), **l.to_dict()} for l in filtered
                     ],
                     "total": len(filtered),
-                    "total_all": len(scored),
+                    "total_all": len(self.tracker_app.store.list_active()),
                     "last_run": self.tracker_app.last_run_status(),
                     "last_crawl_at": self.tracker_app.last_crawl_at(),
                 }
@@ -521,31 +523,38 @@ def main() -> int:
             database=database_path,
         )
 
-    store = TrackerStore(database_path)
-    app = TrackerWebApp(
-        store=store, output_dir=output_dir, run_callback=run_callback, config_path=config_path
-    )
+    with TrackerStore(database_path) as store:
+        app = TrackerWebApp(
+            store=store, output_dir=output_dir, run_callback=run_callback, config_path=config_path
+        )
 
-    if os.getenv("CORVETTE_TRACKER_RUN_ON_START", "true").lower() in {"1", "true", "yes", "on"}:
-        threading.Thread(
-            target=app.run_once, name="corvette-tracker-initial-run", daemon=True
-        ).start()
+        if os.getenv("CORVETTE_TRACKER_RUN_ON_START", "true").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            threading.Thread(
+                target=app.run_once, name="corvette-tracker-initial-run", daemon=True
+            ).start()
 
-    interval = parse_interval_seconds(os.getenv("CORVETTE_TRACKER_CRON_INTERVAL", "6h"))
-    if interval is not None:
-        _start_scheduler(app, interval)
-        print(f"Scheduled crawl interval: {interval}s")
-    else:
-        print("Scheduled crawl disabled")
+        interval = parse_interval_seconds(os.getenv("CORVETTE_TRACKER_CRON_INTERVAL", "6h"))
+        if interval is not None:
+            _start_scheduler(app, interval)
+            print(f"Scheduled crawl interval: {interval}s")
+        else:
+            print("Scheduled crawl disabled")
 
-    health_interval = parse_interval_seconds(os.getenv("CORVETTE_TRACKER_HEALTH_INTERVAL", "5m"))
-    if health_interval is not None:
-        _start_health_scheduler(app, health_interval)
-        print(f"Scheduled health check interval: {health_interval}s")
+        health_interval = parse_interval_seconds(
+            os.getenv("CORVETTE_TRACKER_HEALTH_INTERVAL", "5m")
+        )
+        if health_interval is not None:
+            _start_health_scheduler(app, health_interval)
+            print(f"Scheduled health check interval: {health_interval}s")
 
-    server = app.make_server(host, port)
-    print(f"Corvette Tracker WebUI listening on http://{host}:{port}")
-    server.serve_forever()
+        server = app.make_server(host, port)
+        print(f"Corvette Tracker WebUI listening on http://{host}:{port}")
+        server.serve_forever()
     return 0
 
 

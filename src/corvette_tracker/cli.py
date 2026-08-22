@@ -123,62 +123,62 @@ def run_tracker(
     if not db_path.is_absolute():
         db_path = resolved_output_dir / db_path
 
-    store = TrackerStore(db_path)
-    existing = store.list_active()
+    with TrackerStore(db_path) as store:
+        existing = store.list_active()
 
-    warnings: list[str] = []
-    if fixture:
-        html = Path(fixture).read_text(encoding="utf-8")
-        listings = parse_autoscout24_search(html, "https://fixture.local/search")
-    else:
-        listings, warnings = collect_live(config)
+        warnings: list[str] = []
+        if fixture:
+            html = Path(fixture).read_text(encoding="utf-8")
+            listings = parse_autoscout24_search(html, "https://fixture.local/search")
+        else:
+            listings, warnings = collect_live(config)
 
-    listings = assign_clusters(listings, existing=existing)
-    listings = enrich_clusters(listings)
-    quality_warnings: list[str] = []
-    quality_config = config.get("quality", {})
-    if not fixture and quality_config.get("enabled", True):
-        quality_warnings = validate_crawl_quality(
-            {"listings": [listing.to_dict() for listing in listings]},
-            min_total=int(quality_config.get("min_total", 10)),
-            min_by_source={
-                str(source): int(minimum)
-                for source, minimum in (quality_config.get("min_by_source") or {}).items()
-            },
-        )
-        warnings.extend(quality_warnings)
-
-    ai_config = config.get("ai_enrichment", {})
-    provider_path = ai_provider or ai_config.get("provider")
-    ai_enabled = bool(ai_provider or ai_config.get("enabled"))
-    if ai_enabled and provider_path:
-        try:
-            listings = enrich_listings(
-                listings,
-                load_ai_provider(provider_path),
-                max_images=int(ai_max_images or ai_config.get("max_images", 8)),
+        listings = assign_clusters(listings, existing=existing)
+        listings = enrich_clusters(listings)
+        quality_warnings: list[str] = []
+        quality_config = config.get("quality", {})
+        if not fixture and quality_config.get("enabled", True):
+            quality_warnings = validate_crawl_quality(
+                {"listings": [listing.to_dict() for listing in listings]},
+                min_total=int(quality_config.get("min_total", 10)),
+                min_by_source={
+                    str(source): int(minimum)
+                    for source, minimum in (quality_config.get("min_by_source") or {}).items()
+                },
             )
-        except Exception as exc:
-            warnings.append(f"AI enrichment: {exc}")
-    scoring_config = config.get("scoring")
-    listings = apply_scores(listings, scoring_config)
-    changed = store.upsert_listings(listings)
-    payload = build_feed_payload(
-        apply_scores(store.list_active(), scoring_config),
-        show_hidden=show_hidden,
-    )
-    if warnings:
-        payload["warnings"] = warnings
-    if len(changed) != len(listings):
-        payload.setdefault("warnings", []).append(
-            f"upsert: {len(listings) - len(changed)} von {len(listings)} "
-            "Listings konnten nicht gespeichert werden"
+            warnings.extend(quality_warnings)
+
+        ai_config = config.get("ai_enrichment", {})
+        provider_path = ai_provider or ai_config.get("provider")
+        ai_enabled = bool(ai_provider or ai_config.get("enabled"))
+        if ai_enabled and provider_path:
+            try:
+                listings = enrich_listings(
+                    listings,
+                    load_ai_provider(provider_path),
+                    max_images=int(ai_max_images or ai_config.get("max_images", 8)),
+                )
+            except Exception as exc:
+                warnings.append(f"AI enrichment: {exc}")
+        scoring_config = config.get("scoring")
+        listings = apply_scores(listings, scoring_config)
+        changed = store.upsert_listings(listings)
+        payload = build_feed_payload(
+            apply_scores(store.list_active(), scoring_config),
+            show_hidden=show_hidden,
         )
-    write_exports(payload, resolved_output_dir)
-    _copy_site_to_root(resolved_output_dir)
-    if quality_warnings:
-        return 3, payload
-    return (0 if changed else 2), payload
+        if warnings:
+            payload["warnings"] = warnings
+        if len(changed) != len(listings):
+            payload.setdefault("warnings", []).append(
+                f"upsert: {len(listings) - len(changed)} von {len(listings)} "
+                "Listings konnten nicht gespeichert werden"
+            )
+        write_exports(payload, resolved_output_dir)
+        _copy_site_to_root(resolved_output_dir)
+        if quality_warnings:
+            return 3, payload
+        return (0 if changed else 2), payload
 
 
 def run(args: argparse.Namespace) -> int:
@@ -211,32 +211,32 @@ def run_health(args: argparse.Namespace) -> int:
         ).resolve()
         database_path = output_dir / database_path
 
-    store = TrackerStore(database_path)
-    summary = check_stale_offers(store, force=True, dry_run=getattr(args, "dry_run", False))
+    with TrackerStore(database_path) as store:
+        summary = check_stale_offers(store, force=True, dry_run=getattr(args, "dry_run", False))
 
-    mode = " (dry-run)" if getattr(args, "dry_run", False) else ""
-    print(
-        f"Health check{mode}: {summary['checked']} checked, {summary['skipped']} skipped, "
-        f"{summary['online']} online, {summary['offline']} offline, "
-        f"{summary['failed']} failed, {summary['total']} total"
-    )
-    if summary["results"]:
-        for r in summary["results"]:
-            status_str = "online" if r["is_online"] else "offline"
-            extra = f" (HTTP {r['http_status']})" if r["http_status"] else f" ({r['error']})"
-            print(f"  {r['listing_id']}: {status_str}{extra}")
-
-    check_file = Path(args.check_file) if getattr(args, "check_file", None) else None
-    if check_file:
-        check_file.write_text(
-            f"checked_at={summary['checked_at']}\n"
-            f"checked={summary['checked']}\n"
-            f"online={summary['online']}\n"
-            f"offline={summary['offline']}\n"
-            f"failed={summary['failed']}\n",
+        mode = " (dry-run)" if getattr(args, "dry_run", False) else ""
+        print(
+            f"Health check{mode}: {summary['checked']} checked, {summary['skipped']} skipped, "
+            f"{summary['online']} online, {summary['offline']} offline, "
+            f"{summary['failed']} failed, {summary['total']} total"
         )
+        if summary["results"]:
+            for r in summary["results"]:
+                status_str = "online" if r["is_online"] else "offline"
+                extra = f" (HTTP {r['http_status']})" if r["http_status"] else f" ({r['error']})"
+                print(f"  {r['listing_id']}: {status_str}{extra}")
 
-    return 0 if summary["failed"] == 0 else 1
+        check_file = Path(args.check_file) if getattr(args, "check_file", None) else None
+        if check_file:
+            check_file.write_text(
+                f"checked_at={summary['checked_at']}\n"
+                f"checked={summary['checked']}\n"
+                f"online={summary['online']}\n"
+                f"offline={summary['offline']}\n"
+                f"failed={summary['failed']}\n",
+            )
+
+        return 0 if summary["failed"] == 0 else 1
 
 
 def run_scrape(args: argparse.Namespace) -> int:
@@ -250,18 +250,18 @@ def run_scrape(args: argparse.Namespace) -> int:
         output_dir = Path(getattr(args, "output_dir", ".")).resolve()
         database_path = output_dir / database_path
 
-    store = TrackerStore(database_path)
-    result = re_scrape_offer(
-        store,
-        offer_id=args.offer_id,
-        url=args.url,
-    )
+    with TrackerStore(database_path) as store:
+        result = re_scrape_offer(
+            store,
+            offer_id=args.offer_id,
+            url=args.url,
+        )
 
-    status = "OK" if result["success"] else "FEHLGESCHLAGEN"
-    print(f"[{status}] {result.get('message', '')}")
-    if result.get("change_type"):
-        print(f"  Änderung: {result['change_type']}")
-    return 0 if result["success"] else 1
+        status = "OK" if result["success"] else "FEHLGESCHLAGEN"
+        print(f"[{status}] {result.get('message', '')}")
+        if result.get("change_type"):
+            print(f"  Änderung: {result['change_type']}")
+        return 0 if result["success"] else 1
 
 
 def run_hide(args: argparse.Namespace) -> int:
@@ -274,10 +274,10 @@ def run_hide(args: argparse.Namespace) -> int:
     )
     if not database_path.is_absolute():
         database_path = Path.cwd() / database_path
-    store = TrackerStore(database_path)
-    store.hide_listing(args.listing_id)
-    print(f"Angebot {args.listing_id} wurde versteckt")
-    return 0
+    with TrackerStore(database_path) as store:
+        store.hide_listing(args.listing_id)
+        print(f"Angebot {args.listing_id} wurde versteckt")
+        return 0
 
 
 def run_unhide(args: argparse.Namespace) -> int:
@@ -290,10 +290,10 @@ def run_unhide(args: argparse.Namespace) -> int:
     )
     if not database_path.is_absolute():
         database_path = Path.cwd() / database_path
-    store = TrackerStore(database_path)
-    store.unhide_listing(args.listing_id)
-    print(f"Angebot {args.listing_id} ist wieder sichtbar")
-    return 0
+    with TrackerStore(database_path) as store:
+        store.unhide_listing(args.listing_id)
+        print(f"Angebot {args.listing_id} ist wieder sichtbar")
+        return 0
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -474,6 +474,32 @@ def _make_filtered_request(base_url, query_string):
     return status, payload
 
 
+def test_api_filter_delegates_to_store_list_filtered(tmp_path, monkeypatch):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings(DIVERSE_LISTINGS)
+    calls = []
+    original_list_filtered = store.list_filtered
+
+    def recording_list_filtered(filters=None):
+        calls.append(filters)
+        return original_list_filtered(filters)
+
+    monkeypatch.setattr(store, "list_filtered", recording_list_filtered)
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = _make_filtered_request(base_url, "source=Kleinanzeigen")
+        assert status == 200
+        assert payload["total"] == 3
+        assert calls == [{"source": "Kleinanzeigen"}]
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
 def test_api_filter_no_params_returns_all(tmp_path):
     store = TrackerStore(tmp_path / "tracker.sqlite")
     store.upsert_listings(DIVERSE_LISTINGS)

@@ -1,4 +1,7 @@
+import sqlite3
 from pathlib import Path
+
+import pytest
 
 from corvette_tracker.enums import TrimType
 from corvette_tracker.models import Listing
@@ -28,6 +31,15 @@ def test_store_context_manager_closes_connection(tmp_path: Path):
     db_path = tmp_path / "scoped.sqlite"
     with TrackerStore(db_path) as store:
         store.upsert_listings([make_listing()])
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        store.conn.execute("SELECT 1")
+
+
+def test_store_close_is_idempotent(tmp_path: Path):
+    store = TrackerStore(tmp_path / "closed.sqlite")
+
+    store.close()
     store.close()
 
 
