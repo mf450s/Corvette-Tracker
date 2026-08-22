@@ -90,7 +90,7 @@ def collect_live(config: dict[str, Any]) -> tuple[list[Listing], list[str]]:
     sources = config.get("sources", {})
     for source_key, source_name, fetcher, default_url in _configured_source_fetchers():
         source_config = sources.get(source_key, {})
-        if source_config.get("enabled", True) is False:
+        if not source_config.get("enabled", True):
             continue
         fetched, source_warnings = _fetch_source(fetcher, source_name, source_config, default_url)
         listings.extend(fetched)
