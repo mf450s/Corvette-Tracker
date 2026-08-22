@@ -2,6 +2,12 @@
 // Format: DBML (https://dbml.dbdiagram.io/home)
 // Purpose: Store crawled C6 Corvette listings, snapshots, dedupe clusters,
 // price history, risk signals, feed runs, and exports.
+//
+// Runtime note: the current public tracker intentionally uses a compact SQLite
+// schema embedded in src/corvette_tracker/storage.py (listings, snapshots,
+// manual_overrides, offer_online_status, online_status_history). The richer
+// model below documents the target domain and must not be treated as a runtime
+// migration until each table has an implemented persistence contract.
 
 Project corvette_tracker {
   database_type: "SQLite"
