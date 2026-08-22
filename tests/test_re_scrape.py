@@ -9,7 +9,7 @@ import pytest
 
 from corvette_tracker.http import FetchError
 from corvette_tracker.models import Listing
-from corvette_tracker.re_scrape import _identify_source, re_scrape_offer
+from corvette_tracker.re_scrape import SOURCE_DOMAINS, _identify_source, re_scrape_offer
 from corvette_tracker.storage import TrackerStore
 
 # ── _identify_source tests ───────────────────────────────────────────────
@@ -29,6 +29,14 @@ from corvette_tracker.storage import TrackerStore
 )
 def test_identify_source(url: str, expected: str | None) -> None:
     assert _identify_source(url) == expected
+
+
+def test_source_domain_registry_has_unique_markers_and_names() -> None:
+    markers = [marker for marker, _ in SOURCE_DOMAINS]
+    names = [name for _, name in SOURCE_DOMAINS]
+    assert len(markers) == len(set(markers))
+    assert len(names) == len(set(names))
+    assert all(_identify_source(f"https://www.{marker}.example/") is not None for marker in markers)
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
