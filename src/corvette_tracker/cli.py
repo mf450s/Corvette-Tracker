@@ -67,41 +67,32 @@ def _fetch_source(
     return listings, warnings
 
 
+def _configured_source_fetchers() -> tuple[tuple[str, str, Any, str], ...]:
+    """Return the live source adapters and their stable configuration keys.
+
+    Keeping the registry in one place makes the orchestration contract explicit:
+    every source is fetched through the same warning-isolating adapter and can be
+    enabled or configured without another branch in ``collect_live``.
+    """
+    return (
+        ("autoscout24", "AutoScout24", fetch_autoscout24, AS24_URL),
+        ("kleinanzeigen", "Kleinanzeigen", fetch_kleinanzeigen, KA_URL),
+        ("autouncle", "AutoUncle", fetch_autouncle, AUTOUNCLE_URL),
+        ("classic_trader", "Classic Trader", fetch_classic_trader, CLASSIC_TRADER_URL),
+        ("mobile_de", "mobile.de", fetch_mobile_de, MOBILE_URL),
+    )
+
+
 def collect_live(config: dict[str, Any]) -> tuple[list[Listing], list[str]]:
+    """Collect all enabled sources while isolating failures per configured URL."""
     listings: list[Listing] = []
     warnings: list[str] = []
     sources = config.get("sources", {})
-    if sources.get("autoscout24", {}).get("enabled", True):
-        fetched, source_warnings = _fetch_source(
-            fetch_autoscout24, "AutoScout24", sources.get("autoscout24", {}), AS24_URL
-        )
-        listings.extend(fetched)
-        warnings.extend(source_warnings)
-    if sources.get("kleinanzeigen", {}).get("enabled", True):
-        fetched, source_warnings = _fetch_source(
-            fetch_kleinanzeigen, "Kleinanzeigen", sources.get("kleinanzeigen", {}), KA_URL
-        )
-        listings.extend(fetched)
-        warnings.extend(source_warnings)
-    if sources.get("autouncle", {}).get("enabled", True):
-        fetched, source_warnings = _fetch_source(
-            fetch_autouncle, "AutoUncle", sources.get("autouncle", {}), AUTOUNCLE_URL
-        )
-        listings.extend(fetched)
-        warnings.extend(source_warnings)
-    if sources.get("classic_trader", {}).get("enabled", True):
-        fetched, source_warnings = _fetch_source(
-            fetch_classic_trader,
-            "Classic Trader",
-            sources.get("classic_trader", {}),
-            CLASSIC_TRADER_URL,
-        )
-        listings.extend(fetched)
-        warnings.extend(source_warnings)
-    if sources.get("mobile_de", {}).get("enabled", True):
-        fetched, source_warnings = _fetch_source(
-            fetch_mobile_de, "mobile.de", sources.get("mobile_de", {}), MOBILE_URL
-        )
+    for source_key, source_name, fetcher, default_url in _configured_source_fetchers():
+        source_config = sources.get(source_key, {})
+        if not source_config.get("enabled", True):
+            continue
+        fetched, source_warnings = _fetch_source(fetcher, source_name, source_config, default_url)
         listings.extend(fetched)
         warnings.extend(source_warnings)
     return listings, warnings

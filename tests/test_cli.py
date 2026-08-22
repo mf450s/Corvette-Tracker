@@ -5,9 +5,33 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
-from corvette_tracker.cli import run_hide, run_scrape, run_unhide
+from corvette_tracker.cli import collect_live, run_hide, run_scrape, run_unhide
 from corvette_tracker.models import Listing
 from corvette_tracker.storage import TrackerStore
+
+
+def test_collect_live_registry_isolates_source_failures(monkeypatch):
+    def good_fetch(url):
+        return [Listing(id=url, source="AutoScout24", source_listing_id=url, url=url, title="test")]
+
+    def bad_fetch(url):
+        raise RuntimeError("blocked")
+
+    for name in (
+        "fetch_autoscout24",
+        "fetch_kleinanzeigen",
+        "fetch_autouncle",
+        "fetch_classic_trader",
+        "fetch_mobile_de",
+    ):
+        monkeypatch.setattr("corvette_tracker.cli." + name, good_fetch)
+    monkeypatch.setattr("corvette_tracker.cli.fetch_mobile_de", bad_fetch)
+
+    listings, warnings = collect_live({"sources": {}})
+
+    assert len(listings) == 4
+    assert len(warnings) == 1
+    assert warnings[0].startswith("mobile.de (")
 
 
 def test_cli_run_with_fixture_writes_site_and_exports(tmp_path: Path):
