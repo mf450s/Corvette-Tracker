@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from corvette_tracker.models import Listing
+from corvette_tracker.presentation import render_app_shell as presentation_render_app_shell
 from corvette_tracker.storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, TrackerStore
 from corvette_tracker.web import TrackerWebApp, parse_interval_seconds, render_app_shell
 
@@ -215,6 +216,11 @@ def test_web_api_reads_and_updates_scoring_config(tmp_path: Path):
     finally:
         server.shutdown()
         thread.join(timeout=5)
+
+
+def test_web_shell_compatibility_adapter_uses_presentation_module():
+    assert render_app_shell is presentation_render_app_shell
+    assert render_app_shell() == presentation_render_app_shell()
 
 
 def test_web_shell_contains_scoring_configuration_form():
