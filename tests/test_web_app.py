@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -906,3 +907,27 @@ def test_patch_with_auth_succeeds(tmp_path):
     finally:
         server.shutdown()
         thread.join(timeout=5)
+
+
+def test_editor_registry_and_new_controls():
+    html = presentation_render_app_shell()
+    match = re.search(r"const fieldRegistry = (.*?);\s*const COLOR_HEX_MAP", html, re.S)
+    assert match is not None
+    registry = {entry["name"]: entry for entry in json.loads(match.group(1))}
+    for name in {
+        "price_label",
+        "model",
+        "drivetrain",
+        "warranty",
+        "power_hp",
+        "power_kw",
+        "displacement_cc",
+        "estimated_power_hp",
+        "probable_engine",
+    }:
+        assert registry[name]["hidden"] is True
+    assert registry["lt_package"]["options"] == ["1LT", "2LT", "3LT", "4LT"]
+    assert registry["speedo_300"]["kind"] == "boolean"
+    assert "data-engine-select" in html
+    assert 'id="speedo-filter"' in html
+    assert "speedo-badge" in html
