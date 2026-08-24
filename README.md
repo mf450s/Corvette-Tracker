@@ -1,35 +1,35 @@
 # C6 Corvette Tracker
 
-Ein Python-basierter Angebots-Tracker für **Chevrolet Corvette C6**-Inserate. Der Tracker crawlt öffentliche Angebotsseiten, normalisiert kaufrelevante Fahrzeugdaten, erkennt Änderungen über SQLite-Snapshots und erzeugt eine statische Website mit Feed/Export-Dateien.
+A Python-based marketplace tracker for **Chevrolet Corvette C6** listings. The tracker crawls public listing pages, normalizes vehicle data relevant to a purchase, detects changes through SQLite snapshots, and generates a static website with feed and export files.
 
-Der Fokus liegt bewusst auf **C6 (2005–2013)**. Andere Corvette-Generationen werden best-effort herausgefiltert.
+The project deliberately focuses on **C6 (2005–2013)**. Other Corvette generations are filtered out on a best-effort basis.
 
-## Was das Projekt aktuell macht
+## What the project currently does
 
-- ruft öffentliche Suchergebnisse für C6-Corvette-Angebote ab
-- extrahiert strukturierte Fahrzeugdaten aus Inserats-HTML/JSON
-- erkennt C6-relevante Felder wie Preis, Laufleistung, EZ, TÜV/HU, Motor, Trim, Getriebe und Standort
-- markiert Risiken wie Unfall, Schaden, unklare Meilen/Kilometer, fehlender TÜV, Import-/Salvage-Hinweise und starke Modifikationen
-- leitet einen **wahrscheinlichen Motor** aus PS ab, wenn kein expliziter Motorcode im Inserat steht
-- sammelt Bilder in hoher Qualität, inklusive Detail-Galerien bei Kleinanzeigen
-- dedupliziert offensichtliche gleiche Inserate und bildet Cluster
-- speichert Snapshots lokal in SQLite, um neue Listings und Preisänderungen zu erkennen
-- erzeugt Markdown-, JSON-, CSV- und HTML-Exporte
-- rendert eine statische Website mit Cards, Bildern und Galerie-Thumbnails
+- fetches public search results for C6 Corvette listings
+- extracts structured vehicle data from listing HTML/JSON
+- detects C6-relevant fields such as price, mileage, first registration, inspection status, engine, trim, transmission, and location
+- flags risks such as accidents, damage, unclear mileage, missing inspection data, import or salvage hints, and heavy modifications
+- derives a **probable engine** from horsepower when the listing does not contain an explicit engine code
+- collects high-quality images, including detail galleries from Kleinanzeigen
+- deduplicates obvious duplicate listings and creates clusters
+- stores snapshots locally in SQLite to detect new listings and price changes
+- generates Markdown, JSON, CSV, and HTML exports
+- renders a static website with cards, images, and gallery thumbnails
 
-## Quellen
+## Sources
 
-| Quelle | Status | Verhalten |
+| Source | Status | Behavior |
 |---|---:|---|
-| AutoScout24 | aktiv | Such-HTML/`__NEXT_DATA__`, Bilder werden auf große CDN-Variante normalisiert (`1920x1080.webp`) |
-| Kleinanzeigen | aktiv | Suchseite + Detailseiten; Detail-Galerien werden geladen und als mehrere Bilder exportiert |
-| AutoUncle | aktiv / manchmal blockiert | Öffentliche Suchseite; liefert zusätzliche Corvette-Treffer, kann aus Server-Umgebungen intermittierend HTTP 403 werfen und wird dann als Quellen-Warnung behandelt |
-| Classic Trader | aktiv / oft leer | JSON-LD/öffentliche Suchseite; aktuell häufig 0 C6-Angebote, aber der Connector parsed vorhandene C6-Listings sauber |
-| mobile.de | optional / oft blockiert | Connector vorhanden, aber mobile.de liefert aus Server-/CI-Umgebungen häufig `Access denied` / HTTP 403. Der Lauf bricht dann nicht ab, sondern zeigt eine Quellen-Warnung in JSON/HTML. |
+| AutoScout24 | active | Search HTML/`__NEXT_DATA__`; images are normalized to a large CDN variant (`1920x1080.webp`) |
+| Kleinanzeigen | active | Search and detail pages; detail galleries are loaded and exported as multiple images |
+| AutoUncle | active / sometimes blocked | Public search page; provides additional Corvette listings, can intermittently return HTTP 403 from server environments, and is then reported as a source warning |
+| Classic Trader | active / often empty | JSON-LD/public search page; currently often returns 0 C6 listings, but the connector parses available C6 listings correctly |
+| mobile.de | optional / often blocked | Connector is available, but mobile.de frequently returns `Access denied` / HTTP 403 from server and CI environments. The run continues and reports a source warning in JSON/HTML. |
 
-Keine Login-/Captcha-Umgehung. Keine privaten Kontaktdaten werden bewusst gespeichert.
+No login or CAPTCHA bypassing. Private contact data is not intentionally stored.
 
-## Datenpipeline
+## Data pipeline
 
 ```text
 source connector
@@ -44,122 +44,116 @@ source connector
 ## Setup
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[dev]'
+uv sync --locked
 cp config.example.yaml config.yaml
 ```
 
-## Live-Lauf
+## Live run
 
 ```bash
-.venv/bin/python -m corvette_tracker.cli run --config config.yaml --output-dir .
+uv run corvette-tracker run --config config.yaml --output-dir .
 ```
 
-Ohne explizite Config geht auch:
+A run without an explicit config also works:
 
 ```bash
-.venv/bin/python -m corvette_tracker.cli run --output-dir .
+uv run corvette-tracker run --output-dir .
 ```
 
 ## Docker / WebUI
 
-Das Projekt kann direkt als kombinierter Frontend+Backend-Container laufen. Die WebUI ist danach unter `http://localhost:8096` erreichbar und zeigt die Listings aus der SQLite-Datenbank an. Über die WebUI können einzelne Felder nachgebessert werden; diese manuellen Overrides werden in SQLite gespeichert und bei späteren Crawls nicht mehr durch Parser-/Quellwerte überschrieben.
+The project can run as a combined frontend and backend container. The WebUI is available at `http://localhost:8096` and displays listings from the SQLite database. GET endpoints are readable. Mutating POST and PATCH endpoints require `CORVETTE_TRACKER_ADMIN_USER` and `CORVETTE_TRACKER_ADMIN_PASSWORD` through HTTP Basic Auth.
 
 ```bash
+# Set credentials in the shell or a private env file first.
+export CORVETTE_TRACKER_ADMIN_USER
+export CORVETTE_TRACKER_ADMIN_PASSWORD
+
 docker build -t corvette-tracker:local .
 docker run --rm -p 8096:8096 \
   -v corvette-tracker-data:/app/runtime \
   -e CORVETTE_TRACKER_CRON_INTERVAL=6h \
+  --env CORVETTE_TRACKER_ADMIN_USER \
+  --env CORVETTE_TRACKER_ADMIN_PASSWORD \
   corvette-tracker:local
 ```
 
-Oder mit Compose:
+Important Docker environment variables:
 
-```bash
-docker compose up --build
-```
-
-Wichtige Docker-ENV-Variablen:
-
-| Variable | Default | Bedeutung |
+| Variable | Default | Meaning |
 |---|---|---|
-| `CORVETTE_TRACKER_CRON_INTERVAL` | `6h` | Crawl-Intervall: Sekunden (`300`), Minuten (`15m`), Stunden (`2h`), Tage (`1d`) oder `never`/`off` zum Deaktivieren |
-| `CORVETTE_TRACKER_RUN_ON_START` | `true` | Führt beim Containerstart direkt einen Crawl aus |
-| `CORVETTE_TRACKER_PORT` / `PORT` | `8096` | HTTP-Port im Container |
-| `CORVETTE_TRACKER_OUTPUT_DIR` | `/app/runtime` | Persistente Runtime-Dateien, Exporte und Website |
-| `CORVETTE_TRACKER_DATABASE` | `/app/runtime/data/corvette_tracker.sqlite` | SQLite-Datei inkl. Snapshots und manueller Overrides |
-| `CORVETTE_TRACKER_CONFIG` | `/app/config.yaml` | YAML-Config; kann per Volume überschrieben werden |
+| `CORVETTE_TRACKER_CRON_INTERVAL` | `6h` | Crawl interval: seconds (`300`), minutes (`15m`), hours (`2h`), days (`1d`), or `never`/`off` to disable |
+| `CORVETTE_TRACKER_RUN_ON_START` | `true` | Starts a crawl immediately when the container starts |
+| `CORVETTE_TRACKER_PORT` / `PORT` | `8096` | HTTP port inside the container |
+| `CORVETTE_TRACKER_OUTPUT_DIR` | `/app/runtime` | Persistent runtime files, exports, and website |
+| `CORVETTE_TRACKER_DATABASE` | `/app/runtime/data/corvette_tracker.sqlite` | SQLite database including snapshots and manual overrides |
+| `CORVETTE_TRACKER_CONFIG` | `/app/config.yaml` | YAML configuration; can be replaced with a volume |
+| `CORVETTE_TRACKER_ADMIN_USER` | unset | Username for mutating POST/PATCH requests |
+| `CORVETTE_TRACKER_ADMIN_PASSWORD` | unset | Password for mutating POST/PATCH requests |
 
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest -q
+uv run pytest -q
 ```
 
-CI läuft auf Pull Requests und Pushes gegen `development`.
+CI runs on pull requests and pushes to `development` and `main`.
 
-## Erzeugte Dateien
+## Generated files
 
 ```text
-site/index.html                 # statische Website
-index.html                      # Kopie der Website für Root-/GitHub-Pages-Hosting
-feed/latest.md                  # Markdown-Feed für Menschen
-data/exports/latest.json        # vollständiger JSON-Export
-data/exports/latest.csv         # tabellarischer CSV-Export
-data/corvette_tracker.sqlite    # lokale Historie / Snapshots
+site/index.html                 # static website
+index.html                      # website copy for root/GitHub Pages hosting
+feed/latest.md                  # Markdown feed for humans
+data/exports/latest.json        # complete JSON export
+data/exports/latest.csv         # tabular CSV export
+data/corvette_tracker.sqlite    # local history / snapshots
 ```
 
-`data/corvette_tracker.sqlite`, `site/`, `feed/latest.md` und `data/exports/*` sind lokale Lauf-Artefakte und werden nicht dauerhaft versioniert.
+`data/corvette_tracker.sqlite`, `site/`, `feed/latest.md`, and `data/exports/*` are local runtime artifacts and are not permanently versioned.
 
-## Statische Website
+## Static website
 
-Öffentliche Bereitstellung auf Charon:
+The application can serve the generated `site/` website separately. Deployment targets, internal paths, domains, and credentials belong in private operations documentation, not in this repository. Generated website and export files remain local runtime artifacts and are not versioned.
 
-- Domain: `https://corvette.tompeccobecker.de/`
-- Caddy: `/mnt/nas/docker/caddy/caddy.d/corvette.conf`
-- systemd: `corvette-tracker.service`
-- Upstream: `10.11.12.135:8096`
-- Authentik: bewusst nicht vorgeschaltet
-- Serviert wird nur `site/`, nicht das komplette Repository.
+The website shows the following for each listing:
 
-Die Website zeigt pro Listing:
-
-- Bild / Galerie-Thumbnails
-- Quelle und Link zum Inserat
-- Score
-- Preis
-- Motor / wahrscheinlicher Motor
-- PS
-- Laufleistung
-- Getriebe, z. B. Schalter oder Automatik
-- Trim / Variante
-- Karosserie, z. B. Cabrio, Coupé oder Targa
-- EZ
-- TÜV/HU
-- Standort
-- Risiko-Hinweise
-- Quellen-Warnungen, z. B. wenn mobile.de blockt
+- image / gallery thumbnails
+- source and listing link
+- score
+- price
+- engine / probable engine
+- horsepower
+- mileage
+- transmission, for example manual or automatic
+- trim / variant
+- body style, for example convertible, coupe, or targa
+- first registration
+- inspection status
+- location
+- risk warnings
+- source warnings, for example when mobile.de blocks requests
 
 ## Scoring
 
-Der Score ist eine Preference-Heuristik von `0..100`. Aktueller Standard:
+The score is a preference heuristic from `0..100`. Current default:
 
 ```text
-Score = base_score + erfüllte Wunsch-Kriterien - Risiko-Abzüge
+Score = base_score + fulfilled preferences - risk penalties
 ```
 
-Default-Gewichtung:
+Default weights:
 
-| Kriterium | Bedeutung | Punkte |
+| Criterion | Meaning | Points |
 |---|---|---:|
-| Schalter (`transmission: manual`) | sehr wichtig | +30 |
-| Kein Cabrio (`body_style` nicht Cabrio/Convertible) | wichtig | +20 |
-| Kein LS2 (`engine`/`probable_engine` bekannt und nicht LS2) | wichtig | +20 |
-| Bevorzugter Trim (`Grand Sport`, `Z06`, `ZR1`) | mittel | +10 |
+| Manual (`transmission: manual`) | very important | +30 |
+| Not a convertible (`body_style` is not convertible) | important | +20 |
+| Not an LS2 (`engine`/`probable_engine` is known and not LS2) | important | +20 |
+| Preferred trim (`Grand Sport`, `Z06`, `ZR1`) | medium | +10 |
 
-`base_score` ist standardmäßig `20`, dadurch landet ein Listing, das alle Wunsch-Kriterien erfüllt, bei `100`. Risiko-Flags wie `damage_reported`, `no_tuv` oder `sold_or_reserved` ziehen danach Punkte ab. Der finale Wert wird auf `0..100` begrenzt.
+`base_score` defaults to `20`, so a listing fulfilling all preferences reaches `100`. Risk flags such as `damage_reported`, `no_tuv`, or `sold_or_reserved` are applied afterwards. The final value is limited to `0..100`.
 
-Konfigurierbar in `config.yaml`:
+Configure scoring in `config.yaml`:
 
 ```yaml
 scoring:
@@ -172,11 +166,11 @@ scoring:
   preferred_trims: [Grand Sport, Z06, ZR1]
 ```
 
-Im WebUI gibt es zusätzlich den Bereich **Scoring konfigurieren**. Änderungen werden in dieselbe `config.yaml` geschrieben und bei Export/API-Ausgabe direkt neu angewendet.
+The WebUI also contains a **Configure scoring** section. Changes are written to the same `config.yaml` and immediately applied to exports and API output.
 
-## JSON-Felder
+## JSON fields
 
-Der JSON-Export enthält u. a.:
+The JSON export includes fields such as:
 
 ```json
 {
@@ -191,7 +185,7 @@ Der JSON-Export enthält u. a.:
   "engine": null,
   "probable_engine": "LS2",
   "engine_confidence": 0.86,
-  "engine_note": "Leistung 404 PS → wahrscheinlich LS2",
+  "engine_note": "404 hp -> probable LS2",
   "power_hp": 404,
   "estimated_power_hp": null,
   "power_note": null,
@@ -209,40 +203,40 @@ Der JSON-Export enthält u. a.:
 }
 ```
 
-## Motor-Erkennung
+## Engine detection
 
-Der Tracker unterscheidet zwischen sicher erkanntem und wahrscheinlich abgeleitetem Motor sowie sicherer und geschätzter Leistung:
+The tracker distinguishes between a safely detected and a derived probable engine, as well as explicit and estimated power:
 
-- `engine`: nur wenn ein Motorcode oder eindeutiger Hubraum-/Trim-Hinweis im Inserat steht (`LS2`, `LS3`, `LS7`, `LS9`)
-- `probable_engine`: wenn kein sicherer Motorcode vorhanden ist, aber die Leistung zur C6 passt
-- `engine_confidence`: Confidence der Ableitung
-- `engine_note`: Erklärung für die Ableitung
-- `power_hp`: explizit erkannte PS-Angabe aus dem Inserat
-- `estimated_power_hp`: geschätzte Serienleistung aus erkanntem Motor, wenn das Inserat keine PS nennt
-- `power_note`: Hinweis/Evidence zur geschätzten Leistung
+- `engine`: only when the listing contains an engine code or unambiguous displacement/trim evidence (`LS2`, `LS3`, `LS7`, `LS9`)
+- `probable_engine`: when there is no certain engine code but the horsepower matches a C6 engine range
+- `engine_confidence`: confidence of the derivation
+- `engine_note`: explanation for the derivation
+- `power_hp`: explicitly detected horsepower from the listing
+- `estimated_power_hp`: estimated stock power from the detected engine when the listing contains no horsepower
+- `power_note`: evidence for estimated power
 
-Aktuelle Heuristik:
+Current heuristic:
 
-| PS-Bereich | wahrscheinlicher Motor | Confidence |
+| Horsepower range | Probable engine | Confidence |
 |---:|---|---:|
-| 395–410 PS | LS2 | 0.86 |
-| 425–445 PS | LS3 | 0.86 |
-| 500–520 PS | LS7 | 0.90 |
-| 630–660 PS | LS9 | 0.92 |
+| 395–410 hp | LS2 | 0.86 |
+| 425–445 hp | LS3 | 0.86 |
+| 500–520 hp | LS7 | 0.90 |
+| 630–660 hp | LS9 | 0.92 |
 
-Die Website zeigt das explizit als `wahrscheinlich LSx`, nicht als sichere Angabe.
+The website explicitly labels this as `probable LSx`, not as a verified fact.
 
-## Bild-Handling
+## Image handling
 
 ### AutoScout24
 
-AutoScout liefert in Suchergebnissen oft Thumbnail-URLs wie:
+AutoScout24 often returns thumbnail URLs in search results such as:
 
 ```text
 ...jpg/250x188.webp
 ```
 
-Der Connector normalisiert diese auf größere CDN-Varianten:
+The connector normalizes them to larger CDN variants:
 
 ```text
 ...jpg/1920x1080.webp
@@ -250,26 +244,26 @@ Der Connector normalisiert diese auf größere CDN-Varianten:
 
 ### Kleinanzeigen
 
-Kleinanzeigen zeigt in der Suchliste meist nur ein Bild. Der Connector lädt deshalb zusätzlich die Detailseite und extrahiert die komplette Galerie. Die Bild-URLs werden auf die größere Variante normalisiert:
+Kleinanzeigen usually exposes only one image in the search list. The connector therefore also loads the detail page and extracts the complete gallery. Image URLs are normalized to the larger variant:
 
 ```text
 ?rule=$_59.AUTO
 ```
 
-Wenn die Detailseite fehlschlägt, bleibt das Suchlistenbild als Fallback erhalten.
+If the detail page fails, the search-list image remains as a fallback.
 
-## AI-Enrichment-Hook
+## AI enrichment hook
 
-Das Projekt enthält eine vorbereitete Erweiterungsschicht für spätere Bild+Text-Auswertung durch eine KI. Der Tracker selbst bringt keinen festen Provider und keinen API-Key mit. Stattdessen kann ein Provider als Python-Klasse angebunden werden.
+The project contains a prepared extension layer for future image and text analysis by an AI provider. The tracker does not include a fixed provider or API key. Instead, a provider can be attached as a Python class.
 
-Die AI-Schicht bekommt pro Listing:
+The AI layer receives each listing's:
 
-- Titel
-- Beschreibungstext
-- Bild-URLs, begrenzt über `max_images`
-- bereits bekannte strukturierte Felder wie Preis, km, Motor, Trim, Risiko-Flags
+- title
+- description text
+- image URLs, limited by `max_images`
+- known structured fields such as price, mileage, engine, trim, and risk flags
 
-Der Provider gibt ein `EnrichmentResult` zurück. Aktuell vorgesehene Ergänzungsfelder:
+The provider returns an `EnrichmentResult`. The currently planned enrichment fields are:
 
 - `exterior_color`
 - `interior_color`
@@ -277,13 +271,13 @@ Der Provider gibt ein `EnrichmentResult` zurück. Aktuell vorgesehene Ergänzung
 - `eu_spec`
 - `equipment`
 - `visual_flags`
-- zusätzliche `risk_flags`
+- additional `risk_flags`
 - `notes`
 - `evidence`
 
-Wichtig: AI-Ergebnisse überschreiben keine bereits explizit vom Parser erkannten Werte. Sie füllen nur fehlende Felder und hängen Listen wie Ausstattung/Risiko-Hinweise dedupliziert an.
+Important: AI results never overwrite values explicitly detected by a parser. They only fill missing fields and append deduplicated equipment and risk lists.
 
-Konfiguration:
+Configuration:
 
 ```yaml
 ai_enrichment:
@@ -292,26 +286,26 @@ ai_enrichment:
   max_images: 8
 ```
 
-Alternativ per CLI:
+Alternatively through the CLI:
 
 ```bash
-.venv/bin/python -m corvette_tracker.cli run \
+uv run corvette-tracker run \
   --config config.yaml \
   --ai-provider "your_module:YourVisionProvider" \
   --ai-max-images 8
 ```
 
-Ein Provider-Template liegt unter:
+A provider template is available at:
 
 ```text
 examples/ai_provider_template.py
 ```
 
-Die Website und Markdown-Ausgabe zeigen AI-Ausstattung, visuelle Hinweise und AI-Notizen sichtbar an. Der JSON-Export enthält zusätzlich `ai_enrichment` mit Provider, Confidence, Notes und Evidence.
+The website and Markdown output show AI equipment, visual hints, and AI notes. The JSON export additionally contains `ai_enrichment` with provider, confidence, notes, and evidence.
 
-## Risiko-Flags
+## Risk flags
 
-Aktuell erkannte Warnsignale:
+Currently detected warning signals:
 
 - `accident_reported`
 - `damage_reported`
@@ -322,65 +316,65 @@ Aktuell erkannte Warnsignale:
 - `modified_heavily`
 - `sold_or_reserved`
 
-Die Flags sind heuristisch und ersetzen keine manuelle Prüfung.
+The flags are heuristics and do not replace manual inspection.
 
-## Snapshot- und Änderungslogik
+## Snapshot and change logic
 
-Der Tracker speichert Listings in SQLite. Beim nächsten Lauf kann er erkennen:
+The tracker stores listings in SQLite. On the next run it can detect:
 
-- neues Listing (`new`)
-- Preisänderung (`price_change`)
-- Metadatenänderung (`metadata_change`)
-- unverändertes Listing (`unchanged`)
+- new listing (`new`)
+- price change (`price_change`)
+- metadata change (`metadata_change`)
+- unchanged listing (`unchanged`)
 
-Damit lässt sich über wiederholte Läufe eine lokale Historie aufbauen.
+Repeated runs therefore build a local history.
 
 ## CLI
 
-Aktuell implementiert:
+Currently implemented:
 
 ```bash
-.venv/bin/python -m corvette_tracker.cli run [--config config.yaml] [--output-dir .] [--database data/corvette_tracker.sqlite]
+uv run corvette-tracker run [--config config.yaml] [--output-dir .] [--database data/corvette_tracker.sqlite]
 ```
 
-Für Tests kann ein lokales Fixture statt Live-Crawling genutzt werden:
+For tests, a local fixture can be used instead of live crawling:
 
 ```bash
-.venv/bin/python -m corvette_tracker.cli run --fixture tests-or-local-fixture.html --output-dir /tmp/corvette-run
+uv run corvette-tracker run --fixture tests-or-local-fixture.html --output-dir /tmp/corvette-run
 ```
 
-## Entwicklung
+## Development
 
-Branch-/PR-Konvention für dieses Repo:
+Branch and PR convention for this repository:
 
-- von `development` branchen
-- PR gegen `development`
-- kein direkter Push auf `main`/Release-Branches
+- branch from `development`
+- open PRs against `development`
+- do not push directly to `main` or release branches
 
-Nützliche Befehle:
+Useful commands:
 
 ```bash
 # Tests
-.venv/bin/python -m pytest -q
+uv run pytest -q
 
-# Live-Run + kompakte Ausgabe
-.venv/bin/python -m corvette_tracker.cli run --output-dir .
+# Live run with output in the current directory
+uv run corvette-tracker run --output-dir .
 
-# Git Status kompakt, falls rtk verfügbar
+# Compact Git status, if rtk is available
 rtk git status --short --branch || git status --short --branch
 ```
 
-## Bekannte Grenzen
+## Known limitations
 
-- AutoUncle und mobile.de können Server-/CI-IP-Ranges zeitweise mit HTTP 403 blockieren; der Tracker behandelt das als Quellen-Warnung und nutzt die übrigen Quellen weiter.
-- Classic Trader hat für C6 aktuell oft keine Treffer; der Connector ist trotzdem aktiv, damit Angebote auftauchen, sobald dort welche vorhanden sind.
-- C7/C8-False-Positives werden herausgefiltert: `Z06`, `ZR1` und `Grand Sport` reichen alleine nicht als C6-Beleg, weil diese Begriffe über mehrere Generationen vorkommen.
-- Extraktion ist best-effort; Inseratstexte sind unstrukturiert und teils widersprüchlich.
-- Herkunft, Unfallstatus und Motor-Ableitungen sind heuristisch, wenn sie nicht explizit im Inserat stehen.
-- Keine kostenpflichtigen Historien-/VIN-Datenquellen angebunden.
-- Keine aggressive Bot-Schutz- oder Login-Umgehung.
+- AutoUncle and mobile.de can temporarily block server or CI IP ranges with HTTP 403; the tracker reports a source warning and continues with the remaining sources.
+- Classic Trader often has no C6 matches at the moment; the connector remains active so listings appear when available.
+- C7/C8 false positives are filtered out: `Z06`, `ZR1`, and `Grand Sport` alone are not proof of a C6 because these terms occur across multiple generations.
+- Extraction is best-effort; listing text is unstructured and sometimes contradictory.
+- Origin, accident status, and engine derivations are heuristic when they are not explicit in the listing.
+- No paid history or VIN data sources are connected.
+- No aggressive bot-protection or login bypassing.
 
-## Projektstruktur
+## Project structure
 
 ```text
 corvetteTracker/
@@ -393,6 +387,8 @@ corvetteTracker/
     cli.py
     dedupe.py
     feed.py
+    favicon.py
+    health.py
     http.py
     models.py
     normalize.py

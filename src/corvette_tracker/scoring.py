@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 from .models import Listing
 
@@ -80,13 +80,13 @@ def _engine_code(listing: Listing) -> str | None:
 
 def score_listing(listing: Listing, config: dict[str, Any] | None = None) -> int:
     scoring = merge_scoring_config(config)
-    budget: dict[str, int] = scoring.get("budget") or {}
+    budget = cast(dict[str, int], scoring.get("budget") or {})
     score = _int_value(scoring.get("base_score"), 20)
 
     # ── 1. Engine ──────────────────────────────────────────────────────
     engine = _engine_code(listing)
     eng_budget = _int_value(budget.get("engine"))
-    distrib: dict[str, float] = scoring.get("engine_distribution") or {}
+    distrib = cast(dict[str, float], scoring.get("engine_distribution") or {})
     if engine and engine in distrib:
         score += int(eng_budget * distrib[engine])
     elif engine is None:
@@ -94,13 +94,13 @@ def score_listing(listing: Listing, config: dict[str, Any] | None = None) -> int
 
     # ── 2. Transmission ────────────────────────────────────────────────
     trans_budget = _int_value(budget.get("transmission"))
-    trans: dict[str, float] = scoring.get("transmission") or {}
+    trans = cast(dict[str, float], scoring.get("transmission") or {})
     if listing.transmission in trans:
         score += int(trans_budget * trans[listing.transmission])
 
     # ── 3. Trim ────────────────────────────────────────────────────────
     trim_budget = _int_value(budget.get("trim"))
-    tdistrib: dict[str, float] = scoring.get("trim_distribution") or {}
+    tdistrib = cast(dict[str, float], scoring.get("trim_distribution") or {})
     if listing.trim and listing.trim in tdistrib:
         score += int(trim_budget * tdistrib[listing.trim])
 
@@ -135,7 +135,7 @@ def score_listing(listing: Listing, config: dict[str, Any] | None = None) -> int
         score += _int_value(budget.get("eu_spec"))
 
     # ── 8. Risk penalties ──────────────────────────────────────────────
-    penalties: dict[str, int] = scoring.get("risk_penalties") or {}
+    penalties = cast(dict[str, int], scoring.get("risk_penalties") or {})
     for flag in listing.risk_flags or []:
         score -= _int_value(penalties.get(flag))
 

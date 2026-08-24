@@ -4,7 +4,7 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-USER_AGENT = "corvetteTracker/0.1 (+https://github.com/mf450s/corvetteTracker)"
+USER_AGENT = "corvetteTracker/0.1 (+https://github.com/mf450s/Corvette-Tracker)"
 
 
 class FetchError(RuntimeError):

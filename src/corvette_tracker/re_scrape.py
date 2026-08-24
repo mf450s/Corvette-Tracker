@@ -19,20 +19,19 @@ from .storage import TrackerStore
 log = logging.getLogger(__name__)
 
 
+SOURCE_DOMAINS: tuple[tuple[str, str], ...] = (
+    ("kleinanzeigen", "Kleinanzeigen"),
+    ("autoscout24", "AutoScout24"),
+    ("autouncle", "AutoUncle"),
+    ("classic-trader", "Classic Trader"),
+    ("mobile", "mobile.de"),
+)
+
+
 def _identify_source(url: str) -> str | None:
-    """Identify which source a URL belongs to based on the domain."""
+    """Identify a source using the same ordered domain adapter table everywhere."""
     domain = urlparse(url).netloc.lower()
-    if "kleinanzeigen" in domain:
-        return "Kleinanzeigen"
-    if "autoscout24" in domain:
-        return "AutoScout24"
-    if "autouncle" in domain:
-        return "AutoUncle"
-    if "classic-trader" in domain:
-        return "Classic Trader"
-    if "mobile" in domain:
-        return "mobile.de"
-    return None
+    return next((source for marker, source in SOURCE_DOMAINS if marker in domain), None)
 
 
 def _re_scrape_kleinanzeigen(

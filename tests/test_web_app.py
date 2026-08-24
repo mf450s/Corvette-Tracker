@@ -1,13 +1,27 @@
+import base64
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
 from dataclasses import fields
 from pathlib import Path
 
+import pytest
+
 from corvette_tracker.models import Listing
+from corvette_tracker.presentation import render_app_shell as presentation_render_app_shell
 from corvette_tracker.storage import EDITABLE_FIELDS, PROTECTED_OVERRIDE_FIELDS, TrackerStore
 from corvette_tracker.web import TrackerWebApp, parse_interval_seconds, render_app_shell
+
+TEST_ADMIN_USER = "test-admin"
+TEST_ADMIN_PASSWORD = "test-password"
+
+
+@pytest.fixture(autouse=True)
+def web_auth_env(monkeypatch):
+    monkeypatch.setenv("CORVETTE_TRACKER_ADMIN_USER", TEST_ADMIN_USER)
+    monkeypatch.setenv("CORVETTE_TRACKER_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
 
 
 def make_listing():
@@ -24,13 +38,40 @@ def make_listing():
     )
 
 
-def request_json(url: str, method="GET", payload=None):
+def request_json(url: str, method="GET", payload=None, auth=True):
     data = None if payload is None else json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data, method=method, headers={"Content-Type": "application/json"}
-    )
+    headers = {"Content-Type": "application/json"}
+    if auth:
+        credentials = f"{TEST_ADMIN_USER}:{TEST_ADMIN_PASSWORD}"
+        encoded = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
+        headers["Authorization"] = f"Basic {encoded}"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=5) as response:
         return response.status, json.loads(response.read().decode("utf-8"))
+
+
+def request_error(url: str, method="GET", payload=None, auth=True):
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if auth:
+        credentials = f"{TEST_ADMIN_USER}:{TEST_ADMIN_PASSWORD}"
+        encoded = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
+        headers["Authorization"] = f"Basic {encoded}"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:
+            return (
+                response.status,
+                dict(response.headers),
+                json.loads(response.read().decode("utf-8")),
+            )
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8")
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            payload = body
+        return exc.code, dict(exc.headers), payload
 
 
 def test_parse_interval_seconds_accepts_docker_env_values():
@@ -178,6 +219,11 @@ def test_web_api_reads_and_updates_scoring_config(tmp_path: Path):
         thread.join(timeout=5)
 
 
+def test_web_shell_compatibility_adapter_uses_presentation_module():
+    assert render_app_shell is presentation_render_app_shell
+    assert render_app_shell() == presentation_render_app_shell()
+
+
 def test_web_shell_contains_scoring_configuration_form():
     html = render_app_shell()
 
@@ -251,6 +297,18 @@ def test_web_shell_shows_score_badge_on_overview_preview_image():
     assert html.index('<span class="score-badge">${badgeScore}</span>') < html.index(
         "${image ? `<img"
     )
+
+
+def test_web_shell_styles_speedometer_badge_over_preview_image():
+    html = render_app_shell()
+
+    assert ".speedo-badge" in html
+    speedo_css = html[html.index(".speedo-badge") : html.index(".speedo-badge") + 500]
+    assert "position:absolute" in speedo_css
+    assert "right:10px" in speedo_css
+    assert "background:rgba(24,24,27,.9)" in speedo_css
+    assert "color:#fbbf24" in html
+    assert '<span class="speedo-badge">300er Tacho</span>' in html
 
 
 def test_web_shell_contains_priorities_picker():
@@ -427,6 +485,32 @@ def _make_filtered_request(base_url, query_string):
         url += "?" + query_string
     status, payload = request_json(url)
     return status, payload
+
+
+def test_api_filter_delegates_to_store_list_filtered(tmp_path, monkeypatch):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings(DIVERSE_LISTINGS)
+    calls = []
+    original_list_filtered = store.list_filtered
+
+    def recording_list_filtered(filters=None):
+        calls.append(filters)
+        return original_list_filtered(filters)
+
+    monkeypatch.setattr(store, "list_filtered", recording_list_filtered)
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = _make_filtered_request(base_url, "source=Kleinanzeigen")
+        assert status == 200
+        assert payload["total"] == 3
+        assert calls == [{"source": "Kleinanzeigen"}]
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
 
 
 def test_api_filter_no_params_returns_all(tmp_path):
@@ -757,3 +841,105 @@ def test_patch_protected_field_rejected(tmp_path: Path):
     finally:
         server.shutdown()
         thread.join(timeout=5)
+
+
+def test_post_run_without_credentials_returns_503(tmp_path, monkeypatch):
+    monkeypatch.delenv("CORVETTE_TRACKER_ADMIN_USER", raising=False)
+    monkeypatch.delenv("CORVETTE_TRACKER_ADMIN_PASSWORD", raising=False)
+    app = TrackerWebApp(store=TrackerStore(tmp_path / "tracker.sqlite"), output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, _, payload = request_error(f"{base_url}/api/run", method="POST", auth=False)
+        assert status == 503
+        assert payload["error"] == "mutating API authentication is not configured"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_patch_without_auth_returns_401(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, headers, _ = request_error(
+            f"{base_url}/api/listings/autoscout24_123",
+            method="PATCH",
+            payload={"engine": "LS3"},
+            auth=False,
+        )
+        assert status == 401
+        assert "Basic" in headers.get("WWW-Authenticate", "")
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_get_listings_without_auth_works(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, payload = request_json(f"{base_url}/api/listings", auth=False)
+        assert status == 200
+        assert payload["listings"][0]["id"] == "autoscout24_123"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_patch_with_auth_succeeds(tmp_path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    app = TrackerWebApp(store=store, output_dir=tmp_path)
+    server = app.make_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, updated = request_json(
+            f"{base_url}/api/listings/autoscout24_123",
+            method="PATCH",
+            payload={"engine": "LS3"},
+            auth=True,
+        )
+        assert status == 200
+        assert updated["listing"]["engine"] == "LS3"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_editor_registry_and_new_controls():
+    html = presentation_render_app_shell()
+    match = re.search(r"const fieldRegistry = (.*?);\s*const COLOR_HEX_MAP", html, re.S)
+    assert match is not None
+    registry = {entry["name"]: entry for entry in json.loads(match.group(1))}
+    for name in {
+        "price_label",
+        "model",
+        "drivetrain",
+        "warranty",
+        "power_hp",
+        "power_kw",
+        "displacement_cc",
+        "estimated_power_hp",
+        "probable_engine",
+    }:
+        assert registry[name]["hidden"] is True
+    assert registry["lt_package"]["options"] == ["1LT", "2LT", "3LT", "4LT"]
+    assert registry["speedo_300"]["kind"] == "boolean"
+    assert "data-engine-select" in html
+    assert 'id="speedo-filter"' in html
+    assert "speedo-badge" in html

@@ -7,16 +7,16 @@ on:
   pull_request:
     branches: [development]
   schedule:
-    - cron: "23 3 * * 1"
+    - cron: '23 3 * * 1'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  registry: ghcr.io
-  image_name: ${{ github.repository }}
-  image: local/corvette-tracker:${{ github.sha }}
+  REGISTRY: ghcr.io
+  IMAGE_NAME: mf450s/corvette-tracker
+  IMAGE: local/corvette-tracker:${{ github.sha }}
 
 jobs:
   test:
@@ -24,14 +24,20 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - name: checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: setup python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13'
       - name: install
         run: pip install uv && uv sync --locked
-      - name: test
-        run: uv run pytest -q
+      - name: quality gates
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uvx ty check src
+          uv run pytest -q
 
   build-scan:
     needs: test
@@ -52,20 +58,20 @@ jobs:
         with:
           context: .
           load: true
-          tags: ${{ env.image }}
+          tags: ${{ env.IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: trivy image scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
-          image-ref: ${{ env.image }}
+          image-ref: ${{ env.IMAGE }}
           format: sarif
           output: trivy-image.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           vuln-type: os,library
-          exit-code: "0"
+          exit-code: '0'
 
       - name: trivy config scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
@@ -75,7 +81,7 @@ jobs:
           format: sarif
           output: trivy-config.sarif
           severity: HIGH,CRITICAL
-          exit-code: "0"
+          exit-code: '0'
 
       - name: trivy secret scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
@@ -85,12 +91,12 @@ jobs:
           scanners: secret
           format: sarif
           output: trivy-secret.sarif
-          exit-code: "0"
+          exit-code: '0'
 
       - name: grype image scan
         uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
         with:
-          image: ${{ env.image }}
+          image: ${{ env.IMAGE }}
           output-format: sarif
           output-file: grype.sarif
           only-fixed: true
@@ -135,7 +141,7 @@ jobs:
         run: |
           set -euo pipefail
           container=corvette-tracker-security
-          docker run --detach --name "$container" --env CORVETTE_TRACKER_RUN_ON_START=false --publish 127.0.0.1:18096:8096 "${image}"
+          docker run --detach --name "$container" --env CORVETTE_TRACKER_RUN_ON_START=false --publish 127.0.0.1:18096:8096 "${IMAGE}"
           cleanup() { docker rm --force "$container" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
           for _ in {1..30}; do
@@ -155,7 +161,7 @@ jobs:
 
       - name: save image artifact
         if: github.event_name == 'push'
-        run: docker save --output /tmp/corvette-tracker-image.tar "${image}"
+        run: docker save --output /tmp/corvette-tracker-image.tar "${IMAGE}"
 
       - name: upload image artifact
         if: github.event_name == 'push'
@@ -186,7 +192,7 @@ jobs:
       - name: login to ghcr
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
-          registry: ${{ env.registry }}
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -194,7 +200,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ${{ env.registry }}/${{ env.image_name }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=development,enable=${{ github.ref == 'refs/heads/development' }}
             type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
@@ -203,7 +209,7 @@ jobs:
 
       - name: publish image tags
         env:
-          local_image: ${{ env.image }}
+          local_image: ${{ env.IMAGE }}
           tags: ${{ steps.meta.outputs.tags }}
         run: |
           set -euo pipefail
