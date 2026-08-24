@@ -6,84 +6,205 @@ on:
     tags: ['v*']
   pull_request:
     branches: [development]
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  registry: ghcr.io
+  image_name: ${{ github.repository }}
+  image: local/corvette-tracker:${{ github.sha }}
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13'
-      - name: Install
+      - name: install
         run: pip install uv && uv sync --locked
-      - name: Test
+      - name: test
         run: uv run pytest -q
 
-  docker-build:
-    runs-on: ubuntu-latest
+  build-scan:
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
     permissions:
       contents: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=development,enable=${{ github.ref == 'refs/heads/development' }}
-            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
-            type=semver,pattern={{version}}
-            type=sha,format=short
+      - name: setup buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v6
+      - name: build image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
-          push: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          load: true
+          tags: ${{ env.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: trivy image scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: ${{ env.image }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          vuln-type: os,library
+          exit-code: "0"
+
+      - name: trivy config scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: trivy secret scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          format: sarif
+          output: trivy-secret.sarif
+          exit-code: "0"
+
+      - name: grype image scan
+        uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
+        with:
+          image: ${{ env.image }}
+          output-format: sarif
+          output-file: grype.sarif
+          only-fixed: true
+          fail-build: false
+          severity-cutoff: high
+          cache-db: true
+
+      - name: upload trivy image results
+        if: always() && hashFiles('trivy-image.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      - name: upload trivy config results
+        if: always() && hashFiles('trivy-config.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+      - name: upload trivy secret results
+        if: always() && hashFiles('trivy-secret.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
+        with:
+          sarif_file: trivy-secret.sarif
+          category: trivy-secret
+
+      - name: upload grype results
+        if: always() && hashFiles('grype.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
+        with:
+          sarif_file: grype.sarif
+          category: grype-image
+
+      - name: smoke test image
+        shell: bash
+        run: |
+          set -euo pipefail
+          container=corvette-tracker-security
+          docker run --detach --name "$container" --env CORVETTE_TRACKER_RUN_ON_START=false --publish 127.0.0.1:18096:8096 "${image}"
+          cleanup() { docker rm --force "$container" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          for _ in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:18096/api/status >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent --show-error http://127.0.0.1:18096/api/status >/dev/null
+          for _ in {1..30}; do
+            if [ "$(docker inspect --format '{{.State.Health.Status}}' "$container")" = healthy ]; then
+              break
+            fi
+            sleep 2
+          done
+          test "$(docker inspect --format '{{.State.Health.Status}}' "$container")" = healthy
+
+      - name: save image artifact
+        if: github.event_name == 'push'
+        run: docker save --output /tmp/corvette-tracker-image.tar "${image}"
+
+      - name: upload image artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: corvette-tracker-image-${{ github.sha }}
+          path: /tmp/corvette-tracker-image.tar
+          if-no-files-found: error
+          retention-days: 1
 
   publish:
-    if: github.event_name != 'pull_request'
-    needs: [test, docker-build]
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    needs: [test, build-scan]
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - name: download image artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          registry: ${{ env.REGISTRY }}
+          name: corvette-tracker-image-${{ github.sha }}
+          path: /tmp
+
+      - name: load image artifact
+        run: docker load --input /tmp/corvette-tracker-image.tar
+
+      - name: login to ghcr
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.registry }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: extract docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.registry }}/${{ env.image_name }}
           tags: |
             type=raw,value=development,enable=${{ github.ref == 'refs/heads/development' }}
             type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
             type=sha,format=short
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
+      - name: publish image tags
+        env:
+          local_image: ${{ env.image }}
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag "$local_image" "$tag"
+            docker push "$tag"
+          done <<< "$tags"
