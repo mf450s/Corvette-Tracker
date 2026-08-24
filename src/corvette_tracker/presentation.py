@@ -37,6 +37,7 @@ def render_app_shell() -> str:
         "bose_audio",
         "leather_interior",
         "heated_seats",
+        "speedo_300",
     }
     list_fields = {
         "equipment",
@@ -153,6 +154,8 @@ def render_app_shell() -> str:
         "bose_audio": "Bose-Sound",
         "leather_interior": "Lederausstattung",
         "heated_seats": "Sitzheizung",
+        "lt_package": "LT-Ausstattung (Innen)",
+        "speedo_300": "300er Tacho",
         "first_registration": "Erstzulassung",
         "tuv_until": "TÜV bis",
         "transmission": "Getriebe",
@@ -197,6 +200,18 @@ def render_app_shell() -> str:
             ("Targa", "Targa"),
             ("unknown", "Unbekannt"),
         ],
+        "lt_package": [("1LT", "1LT"), ("2LT", "2LT"), ("3LT", "3LT"), ("4LT", "4LT")],
+    }
+    editor_hidden_fields = {
+        "price_label",
+        "model",
+        "drivetrain",
+        "warranty",
+        "power_hp",
+        "power_kw",
+        "displacement_cc",
+        "estimated_power_hp",
+        "probable_engine",
     }
     field_registry = [
         {
@@ -204,6 +219,7 @@ def render_app_shell() -> str:
             "label": FIELD_LABELS.get(field.name, field.name),
             "editable": field.name in EDITABLE_FIELDS,
             "protected": field.name in PROTECTED_OVERRIDE_FIELDS,
+            "hidden": field.name in editor_hidden_fields,
             "kind": "month"
             if field.name in month_fields
             else "select"
@@ -259,6 +275,8 @@ def render_app_shell() -> str:
         "bose_audio",
         "leather_interior",
         "heated_seats",
+        "speedo_300",
+        "lt_package",
         "eu_spec",
         "accident_status",
         "damage",
@@ -415,6 +433,7 @@ def render_app_shell() -> str:
     <label class="filter-field">Änderung<select id="change-filter"><option value="all">Alle</option><option value="new">Neu</option><option value="price_change">Preis geändert</option><option value="metadata_change">Metadaten geändert</option><option value="unchanged">Unverändert</option></select></label>
     <label class="filter-field score-field"><span>Score &ge; <b id="score-value">0</b></span><input id="score-min" class="score-slider" type="range" min="0" max="100" value="0"></label>
     <label class="filter-check"><input id="hide-risk" type="checkbox">Riskante ausblenden</label>
+  <label class="filter-check"><input id="speedo-filter" type="checkbox">300er Tacho</label>
   </div>
 </section><div id="listings" class="grid"></div></main>
 <script data-field-registry="{field_registry_attr}">
@@ -579,7 +598,7 @@ function renderOverviewCard(item, group) {{
   const extraBadge = group && group.offerCount > 1 ? `<span class="offer-badge">${{group.offerCount}} Angebote · ${{esc(group.sourceSummary)}}</span>` : '';
   const offerLinks = group && group.offerCount > 1 ? '<p class="offer-links muted">Angebote: ' + group.members.map(m => '<a href="' + esc(m.url) + '" target="_blank" rel="noreferrer">' + esc(m.source) + '</a>').join(' · ') + '</p>' : '';
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}" data-status="${{st}}">
-    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{badgeScore}}</span>${{image ? `<img data-lazy-src="${{esc(image)}}" alt="" loading="lazy">` : ''}}</a>
+    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{badgeScore}}</span>${{item.speedo_300 ? '<span class="speedo-badge">300er Tacho</span>' : ''}}${{image ? `<img data-lazy-src="${{esc(image)}}" alt="" loading="lazy">` : ''}}</a>
     <div class="body">
       <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}}</p>
       ${{extraBadge}}
@@ -601,6 +620,14 @@ function renderOverviewCard(item, group) {{
 function inlineEditorValue(field, item) {{
   const value = item[field.name];
   const fieldLabel = field.label || field.name;
+  if (field.name === 'engine') {{
+    const known = ['LS2', 'LS3', 'LS7', 'LS9'];
+    const current = editorValue(value, field.kind);
+    const selected = known.includes(current) ? current : current ? '__other__' : '';
+    const options = known.map(engine => `<option value="${{engine}}" ${{selected === engine ? 'selected' : ''}}>${{engine}}</option>`).join('');
+    const hint = item.probable_engine && !value ? `<p class="muted">Vorschlag: ${{esc(item.probable_engine)}} (geschätzt)</p>` : '';
+    return `<div class="field-editor engine-field" data-inline-field="engine"><label>Motor</label><div class="engine-row"><select data-engine-select><option value="">k.A.</option>${{options}}<option value="__other__" ${{selected === '__other__' ? 'selected' : ''}}>Anderer Motor…</option></select><input data-field-name="engine" data-field-kind="text" type="text" value="${{esc(current)}}" placeholder="z.B. LS3" ${{selected !== '__other__' ? 'hidden' : ''}}></div>${{hint}}</div>`;
+  }}
   if (!field.editable) return `<div class="field-editor readonly-field"><span>${{esc(fieldLabel)}}</span><strong>${{esc(displayValue(value))}}</strong></div>`;
   if (field.kind === 'boolean') {{
     return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(fieldLabel)}}</label><select data-field-name="${{esc(field.name)}}" data-field-kind="${{esc(field.kind)}}"><option value="" ${{value == null ? 'selected' : ''}}>k.A.</option><option value="true" ${{value === true ? 'selected' : ''}}>ja</option><option value="false" ${{value === false ? 'selected' : ''}}>nein</option></select></div>`;
@@ -638,7 +665,7 @@ function inlineEditorValue(field, item) {{
   return `<div class="field-editor" data-inline-field="${{esc(field.name)}}"><label>${{esc(fieldLabel)}}</label>${{input}}</div>`;
 }}
 function renderAllFields(item) {{
-  return `<details class="listing-fields" open><summary>Alle Werte anzeigen / inline bearbeiten</summary><div class="field-grid">${{fieldRegistry.map(field => inlineEditorValue(field, item)).join('')}}</div><div class="button-row" style="margin-top:16px"><button class="button" onclick="saveAllFields('${{esc(item.id)}}')">Speichern</button></div></details>`;
+  return `<details class="listing-fields" open><summary>Alle Werte anzeigen / inline bearbeiten</summary><div class="field-grid">${{fieldRegistry.filter(field => !field.hidden).map(field => inlineEditorValue(field, item)).join('')}}</div><div class="button-row" style="margin-top:16px"><button class="button" onclick="saveAllFields('${{esc(item.id)}}')">Speichern</button></div></details>`;
 }}
 function changeLabel(type) {{
   const labels = {{'new':'Neu','price_change':'Preis geändert','metadata_change':'Metadaten geändert','manual_override':'Manuell','unchanged':'Unverändert','went_offline':'Offline gegangen','came_online':'Wieder online'}};
@@ -997,6 +1024,7 @@ function renderOverviewPage() {{
   const kmMax = parseFloat(document.getElementById('km-max').value) || 0;
   const scoreMin = parseInt(document.getElementById('score-min').value) || 0;
   const hideRisk = document.getElementById('hide-risk').checked;
+  const speedoFilter = document.getElementById('speedo-filter').checked;
   
   myScoreMap = computeMyScores(currentListings);
   let filtered = currentListings.filter(item => {{
@@ -1045,6 +1073,7 @@ function renderOverviewPage() {{
     if (scoreMin > 0 && (myScoreMap.get(item.id) ?? 0) < scoreMin) return false;
     // Hide risk — skip items with any risk_flag
     if (hideRisk && item.risk_flags && item.risk_flags.length > 0) return false;
+    if (speedoFilter && !item.speedo_300) return false;
     return true;
   }});
   
@@ -1152,6 +1181,8 @@ function resetFilters() {{
     }}
     const hideRisk = document.getElementById('hide-risk');
     if (hideRisk) hideRisk.checked = false;
+    const speedoFilter = document.getElementById('speedo-filter');
+    if (speedoFilter) speedoFilter.checked = false;
     renderListings();
 }}
 document.getElementById('reset-filters').addEventListener('click', resetFilters);
@@ -1175,6 +1206,7 @@ document.getElementById('score-min').addEventListener('input', function() {{
   renderListings();
 }});
 document.getElementById('hide-risk').addEventListener('change', renderListings);
+document.getElementById('speedo-filter').addEventListener('change', renderListings);
 document.querySelectorAll('[data-priority-key]').forEach(el => {{
   el.addEventListener('input', function() {{
     readPrioritySliders();
@@ -1249,6 +1281,16 @@ document.addEventListener('click', function(event) {{
 
 document.addEventListener('keydown', function(event) {{
   if (event.key === 'Escape') closeColorPopups();
+}});
+
+document.addEventListener('change', function(event) {{
+  const select = event.target.closest('[data-engine-select]');
+  if (!select) return;
+  const input = select.closest('.engine-field')?.querySelector('[data-field-name="engine"]');
+  if (!input) return;
+  input.hidden = select.value !== '__other__';
+  input.value = select.value === '__other__' ? '' : select.value;
+  if (select.value === '__other__') input.focus();
 }});
 
 document.addEventListener('input', function(event) {{

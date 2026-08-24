@@ -55,3 +55,12 @@ def test_manual_override_rejects_unknown_fields(tmp_path: Path):
         assert "does_not_exist" in str(exc)
     else:
         raise AssertionError("unknown override field should fail")
+
+
+def test_lt_package_and_speedo_300_overrides(tmp_path: Path):
+    store = TrackerStore(tmp_path / "tracker.sqlite")
+    store.upsert_listings([make_listing()])
+    updated = store.update_overrides("autoscout24_123", {"lt_package": "3LT", "speedo_300": True})
+    assert updated.lt_package == "3LT"
+    assert updated.speedo_300 is True
+    assert store.list_active()[0].speedo_300 is True

@@ -65,6 +65,8 @@ class Listing:
     bose_audio: bool | None = None
     leather_interior: bool | None = None
     heated_seats: bool | None = None
+    lt_package: str | None = None
+    speedo_300: bool | None = None
     score: int = 0
     change_type: str = "new"
     previous_price_eur: int | None = None
