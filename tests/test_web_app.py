@@ -299,6 +299,18 @@ def test_web_shell_shows_score_badge_on_overview_preview_image():
     )
 
 
+def test_web_shell_styles_speedometer_badge_over_preview_image():
+    html = render_app_shell()
+
+    assert ".speedo-badge" in html
+    speedo_css = html[html.index(".speedo-badge") : html.index(".speedo-badge") + 500]
+    assert "position:absolute" in speedo_css
+    assert "right:10px" in speedo_css
+    assert "background:rgba(24,24,27,.9)" in speedo_css
+    assert "color:#fbbf24" in html
+    assert '<span class="speedo-badge">300er Tacho</span>' in html
+
+
 def test_web_shell_contains_priorities_picker():
     html = render_app_shell()
 
