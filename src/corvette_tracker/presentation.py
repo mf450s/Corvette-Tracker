@@ -394,6 +394,13 @@ def render_app_shell() -> str:
     .priority-weight-seg {{ display:flex; align-items:center; justify-content:center; min-width:0; overflow:hidden; font-size:11px; font-weight:800; color:white; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,.55); }}
     .priority-weight-seg span {{ padding:0 4px; }}
     .priority-weight-empty {{ padding:5px 12px; color:var(--muted); font-size:12px; }}
+     .image-carousel {{ position:relative; margin-top:14px; }}
+     .carousel-slide {{ display:flex; justify-content:center; min-height:180px; }}
+     .carousel-slide[hidden] {{ display:none; }}
+     .carousel-slide img {{ max-width:100%; max-height:520px; object-fit:contain; border-radius:12px; }}
+     .carousel-controls {{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:10px; }}
+     .carousel-controls[hidden] {{ display:none; }}
+     .carousel-indicator {{ color:var(--muted); font-size:13px; }}
   </style>
 </head>
 <body>
@@ -448,8 +455,30 @@ let myScoreMap = new Map();
 function getStatus(id) {{ return healthStatusMap[id] ?? 'unknown'; }}
 function statusLabel(s) {{ return s === 'online' ? 'Online' : s === 'offline' ? 'Offline' : 'Unbekannt'; }}
 function esc(value) {{ return String(value ?? '').replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}}[c])); }}
+function handleImageError(event) {{
+  const img = event.currentTarget;
+  let fallbacks = [];
+  try {{ fallbacks = JSON.parse(img.dataset.fallbackSrcs || '[]'); }} catch (e) {{ /* ignore malformed metadata */ }}
+  const next = fallbacks.shift();
+  if (next) {{
+    img.dataset.fallbackSrcs = JSON.stringify(fallbacks);
+    img.src = next;
+    return;
+  }}
+  const slide = img.closest('[data-carousel-slide]');
+  if (slide) {{
+    slide.remove();
+    refreshCarousel();
+  }} else {{
+    img.remove();
+  }}
+}}
+function bindImageFallback(img) {{
+  img.addEventListener('error', handleImageError);
+}}
 function loadLazyImages() {{
   const images = document.querySelectorAll('img[data-lazy-src]');
+  images.forEach(bindImageFallback);
   if (!('IntersectionObserver' in window)) {{
     images.forEach(img => {{
       img.src = img.dataset.lazySrc;
@@ -589,7 +618,9 @@ function renderListings() {{
 }}
 function overviewSpec(label, value) {{ return `<div><dt>${{esc(label)}}</dt><dd>${{esc(displayValue(value))}}</dd></div>`; }}
 function renderOverviewCard(item, group) {{
-  const image = (item.image_urls || [])[0];
+  const images = Array.isArray(item.image_urls) ? item.image_urls.filter(url => typeof url === 'string' && url.trim()) : [];
+  const image = images[0];
+  const fallbackSrcs = esc(JSON.stringify(images.slice(1)));
   const detailUrl = '/car/' + encodeURIComponent(item.id);
   const offerUrl = item.url || detailUrl;
   const st = getStatus(item.id);
@@ -598,7 +629,7 @@ function renderOverviewCard(item, group) {{
   const extraBadge = group && group.offerCount > 1 ? `<span class="offer-badge">${{group.offerCount}} Angebote · ${{esc(group.sourceSummary)}}</span>` : '';
   const offerLinks = group && group.offerCount > 1 ? '<p class="offer-links muted">Angebote: ' + group.members.map(m => '<a href="' + esc(m.url) + '" target="_blank" rel="noreferrer">' + esc(m.source) + '</a>').join(' · ') + '</p>' : '';
   return `<article class="card" data-overview-card data-id="${{esc(item.id)}}" data-status="${{st}}">
-    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{badgeScore}}</span>${{item.speedo_300 ? '<span class="speedo-badge">300er Tacho</span>' : ''}}${{image ? `<img data-lazy-src="${{esc(image)}}" alt="" loading="lazy">` : ''}}</a>
+    <a class="image" href="${{esc(offerUrl)}}" target="_blank" rel="noreferrer"><span class="score-badge">${{badgeScore}}</span>${{item.speedo_300 ? '<span class="speedo-badge">300er Tacho</span>' : ''}}${{image ? `<img data-lazy-src="${{esc(image)}}" data-fallback-srcs="${{fallbackSrcs}}" alt="" loading="lazy">` : ''}}</a>
     <div class="body">
       <p class="muted meta-line"><span class="status-dot ${{st}}"></span>${{esc(item.source)}} &middot; ${{statusLabel(st)}}</p>
       ${{extraBadge}}
@@ -752,6 +783,45 @@ function renderHistory(history, onlineHistory, summary, series) {{
   }}).join('');
   return `<section class="panel"><h2>Verlauf</h2>${{renderHistorySummary(summary)}}${{renderPriceChart(series)}}<table class="history-table"><thead><tr><th>Zeit</th><th>Änderung</th><th>Preis</th><th>Δ Preis</th><th>km</th><th>Δ km</th></tr></thead><tbody>${{rows || '<tr><td colspan="6">Noch kein Verlauf.</td></tr>'}}</tbody></table></section>`;
 }}
+let carouselIndex = 0;
+function refreshCarousel() {{
+  const carousel = document.querySelector('[data-image-carousel]');
+  if (!carousel) return;
+  const slides = [...carousel.querySelectorAll('[data-carousel-slide]')];
+  if (slides.length === 0) {{ carousel.remove(); return; }}
+  carouselIndex = Math.min(Math.max(carouselIndex, 0), slides.length - 1);
+  slides.forEach((slide, index) => {{
+    slide.hidden = index !== carouselIndex;
+    slide.classList.toggle('active', index === carouselIndex);
+  }});
+  const previous = carousel.querySelector('[data-carousel-prev]');
+  const next = carousel.querySelector('[data-carousel-next]');
+  const indicator = carousel.querySelector('[data-carousel-indicator]');
+  const single = slides.length < 2;
+  if (previous) {{ previous.disabled = single; previous.hidden = single; }}
+  if (next) {{ next.disabled = single; next.hidden = single; }}
+  if (indicator) indicator.textContent = `${{carouselIndex + 1}} / ${{slides.length}}`;
+}}
+function moveCarousel(delta) {{
+  const slides = document.querySelectorAll('[data-carousel-slide]');
+  if (slides.length < 2) return;
+  carouselIndex = (carouselIndex + delta + slides.length) % slides.length;
+  refreshCarousel();
+}}
+function initCarousel() {{
+  carouselIndex = 0;
+  document.querySelectorAll('[data-carousel-slide] img').forEach(img => {{
+    bindImageFallback(img);
+    img.src = img.dataset.carouselSrc;
+  }});
+  refreshCarousel();
+}}
+function renderDetailCarousel(item) {{
+  const images = Array.isArray(item.image_urls) ? item.image_urls.filter(url => typeof url === 'string' && url.trim()) : [];
+  if (images.length === 0) return '';
+  const slides = images.map((url, index) => `<div class="carousel-slide${{index === 0 ? ' active' : ''}}" data-carousel-slide="${{index}}"${{index === 0 ? '' : ' hidden'}}><img data-carousel-src="${{esc(url)}}" alt="${{esc(item.title || '')}}" loading="lazy"></div>`).join('');
+  return `<section class="image-carousel" data-image-carousel aria-label="Bilder"><div class="carousel-slides">${{slides}}</div><div class="carousel-controls"><button type="button" class="button secondary" data-carousel-prev onclick="moveCarousel(-1)">← Zurück</button><span class="carousel-indicator" data-carousel-indicator aria-live="polite">1 / ${{images.length}}</span><button type="button" class="button secondary" data-carousel-next onclick="moveCarousel(1)">Weiter →</button></div></section>`;
+}}
 async function renderDetailPage(item) {{
   const grid = document.getElementById('listings');
   grid.classList.remove('grid');
@@ -770,7 +840,8 @@ async function renderDetailPage(item) {{
     mergeButtons.push(`<button class="button secondary" onclick="unmergeOffer('${{esc(item.id)}}')">Vom Cluster trennen</button>`);
   }}
   const mergeButtonsHtml = mergeButtons.join('');
-  grid.innerHTML = `${{groupPanel}}${{renderHistory(payload.history, payload.online_history || [], payload.summary, payload.series)}}<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button>${{mergeButtonsHtml}}</div><p class="muted">${{esc(item.source)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>`;
+  grid.innerHTML = `${{groupPanel}}${{renderHistory(payload.history, payload.online_history || [], payload.summary, payload.series)}}${{renderDetailCarousel(item)}}<article class="card detail-card" data-detail-page data-id="${{esc(item.id)}}"><div class="body"><div class="button-row"><a class="button" href="/" onclick="openOverview(event)">← Zur Übersicht</a><button class="button secondary" onclick="reScrapeOffer('${{esc(item.id)}}')">Neu scrapen</button>${{mergeButtonsHtml}}</div><p class="muted">${{esc(item.source)}} · ${{esc(item.change_type || 'unbekannt')}}</p><h2>${{esc(item.title)}}</h2><p class="price">${{fmtEur(item.price_eur)}}</p><dl class="overview-specs">${{overviewSpec('Trim', item.trim || 'k.A.')}}${{overviewSpec('Getriebe', item.transmission || 'k.A.')}}${{overviewSpec('km', fmtKm(item.mileage_km))}}${{overviewSpec('Motor', item.engine || item.probable_engine || 'k.A.')}}</dl>${{detailFields}}</div></article>`;
+  initCarousel();
 }}
 function switchOffer(id) {{
   history.pushState({{id: id}}, '', '/car/' + encodeURIComponent(id));
