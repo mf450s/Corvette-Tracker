@@ -1,6 +1,8 @@
 import base64
 import json
 import re
+import shutil
+import subprocess
 import threading
 import urllib.error
 import urllib.request
@@ -286,7 +288,46 @@ def test_web_shell_overview_links_directly_to_original_offer_and_keeps_detail_ed
     assert "offer-badge" in html
 
 
+def test_web_shell_overview_images_use_escaped_lazy_fallbacks():
+    html = render_app_shell()
+
+    assert 'data-lazy-src="${esc(image)}"' in html
+    assert 'data-fallback-srcs="${fallbackSrcs}"' in html
+    assert "function handleImageError" in html
+    assert "img.remove()" in html
+    assert "images.slice(1)" in html
+
+
+def test_web_shell_contains_detail_image_carousel_markup_and_logic():
+    html = render_app_shell()
+
+    assert "function renderDetailCarousel(item)" in html
+    assert "data-image-carousel" in html
+    assert "data-carousel-slide" in html
+    assert "data-carousel-prev" in html
+    assert "data-carousel-next" in html
+    assert "data-carousel-indicator" in html
+    assert "slide.remove();" in html
+    assert "carouselIndex = Math.min(Math.max(carouselIndex, 0), slides.length - 1);" in html
+    assert "if (slides.length < 2) return;" in html
+    assert "if (images.length === 0) return '';" in html
+    assert "initCarousel();" in html
+
+
+def test_web_shell_javascript_passes_node_check_when_available(tmp_path):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    shell = render_app_shell()
+    script = shell.split("<script", 1)[1].split(">", 1)[1].split("</script>", 1)[0]
+    script_path = tmp_path / "shell.js"
+    script_path.write_text(script, encoding="utf-8")
+    result = subprocess.run([node, "--check", str(script_path)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
 def test_web_shell_shows_score_badge_on_overview_preview_image():
+
     html = render_app_shell()
 
     assert "score-badge" in html
