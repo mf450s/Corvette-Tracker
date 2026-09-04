@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup, Tag
 
 from ..http import fetch_html
 from ..models import Listing
-from ..normalize import extract_transmission, normalize_listing
+from ..normalize import extract_transmission, is_search_request_title, normalize_listing
 from ..scoring import apply_score
 
 SOURCE = "Kleinanzeigen"
@@ -53,10 +53,22 @@ def _json_ld_objects(root: BeautifulSoup | Tag) -> list[dict[str, Any]]:
 
 def _json_ld_title(root: BeautifulSoup | Tag) -> str:
     for item in _json_ld_objects(root):
-        for key in ("title", "name"):
+        for key in ("title", "name", "headline"):
             title = _usable_title(str(item.get(key) or ""))
-            if title:
+            if title and title.lower() != "kleinanzeigen":
                 return title
+    return ""
+
+
+def _meta_title(root: BeautifulSoup | Tag) -> str:
+    """Read title metadata used by detail pages when the heading is absent."""
+    for selector in ('meta[property="og:title"]', 'meta[name="twitter:title"]'):
+        node = root.select_one(selector)
+        if not node:
+            continue
+        title = _usable_title(str(node.get("content") or ""))
+        if title and title.lower() != "kleinanzeigen":
+            return title
     return ""
 
 
@@ -126,13 +138,13 @@ def _detail_title(soup: BeautifulSoup) -> str:
     ):
         title_node = soup.select_one(selector)
         title = _usable_title(_text(title_node))
-        if title:
+        if title and title.lower() != "kleinanzeigen":
             return title
     for title_node in soup.select("h1"):
         title = _usable_title(_text(title_node))
         if title and ("corvette" in title.lower() or re.search(r"\bc\s*6\b", title, re.I)):
             return title
-    return _json_ld_title(soup)
+    return _json_ld_title(soup) or _meta_title(soup)
 
 
 def _detail_description_text(soup: BeautifulSoup) -> str:
@@ -221,6 +233,16 @@ def _detail_facts_text(soup: BeautifulSoup) -> str:
             continue
         label = _text(term)
         value = _text(value_node)
+        if not label or not value:
+            continue
+        key = (label.lower(), value.lower())
+        if key not in seen:
+            seen.add(key)
+            facts.append(f"{label} {value}")
+
+    for node in soup.select("[data-label][data-value], [data-detail-label][data-detail-value]"):
+        label = str(node.get("data-label") or node.get("data-detail-label") or "").strip()
+        value = str(node.get("data-value") or node.get("data-detail-value") or "").strip()
         if not label or not value:
             continue
         key = (label.lower(), value.lower())
@@ -318,6 +340,11 @@ def _listing_id_from_url(url: str, fallback: str) -> str:
     return str(match.group(1)) if match else fallback
 
 
+def _is_search_request_url(url: str) -> bool:
+    path = urlparse(url).path.lower()
+    return "/s-anzeige/suche-" in path or "/s-anzeige/such-" in path
+
+
 def _fallback_listing_segments(html_text: str, base_url: str) -> list[Listing]:
     matches = list(
         re.finditer(
@@ -384,12 +411,20 @@ def parse_kleinanzeigen_search(html_text: str, base_url: str = DEFAULT_URL) -> l
             _text(title_node),
             _text(title_link),
             _json_ld_title(article),
+            str(article.get("data-title") or ""),
+            str(article.get("aria-label") or ""),
             _text(link),
         ]
         title = next(
             (candidate for candidate in map(_usable_title, title_candidates) if candidate), ""
         )
+        if title and is_search_request_title(title):
+            log.info("Skipping Kleinanzeigen search request: %s", url)
+            continue
         if not title:
+            if _is_search_request_url(url):
+                log.info("Skipping untitled Kleinanzeigen search request: %s", url)
+                continue
             title = _fallback_title(str(source_id), url)
             log.warning("Kleinanzeigen search result has no usable title: %s", url)
         price_node = article.select_one('[class*="price"]')

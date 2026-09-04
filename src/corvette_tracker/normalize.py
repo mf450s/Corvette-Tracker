@@ -19,6 +19,33 @@ HP_RE = re.compile(r"\b(\d{3,4})\s*(?:PS|HP)\b", re.I)
 MONTH_YEAR_RE = re.compile(
     r"(?:EZ|Erstzulassung|HU|TÜV|TUV)?\s*(0?[1-9]|1[0-2])[./-](20\d{2}|19\d{2})", re.I
 )
+TEXT_MONTH_YEAR_RE = re.compile(
+    r"\b(?:EZ|Erstzulassung|Erstzulassungsdatum)\s*:?\s*"
+    r"(Januar|Februar|März|Maerz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)"
+    r"\s+(20\d{2}|19\d{2})\b",
+    re.I,
+)
+TEXT_TUV_MONTH_YEAR_RE = re.compile(
+    r"\b(?:HU|TÜV|TUV)\s*(?:bis\s*)?:?\s*"
+    r"(Januar|Februar|März|Maerz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)"
+    r"\s+(20\d{2}|19\d{2})\b",
+    re.I,
+)
+MONTH_NUMBERS = {
+    "januar": 1,
+    "februar": 2,
+    "märz": 3,
+    "maerz": 3,
+    "april": 4,
+    "mai": 5,
+    "juni": 6,
+    "juli": 7,
+    "august": 8,
+    "september": 9,
+    "oktober": 10,
+    "november": 11,
+    "dezember": 12,
+}
 VIN_RE = re.compile(r"\b[1-9A-HJ-NPR-Z]{17}\b", re.I)
 SEARCH_REQUEST_TITLE_RE = re.compile(r"\bsuche\b", re.I)
 
@@ -99,6 +126,11 @@ def extract_first_registration(text: str) -> str | None:
         year = int(match.group(2))
         if 2005 <= year <= 2013:
             return f"{year:04d}-{month:02d}"
+    for match in TEXT_MONTH_YEAR_RE.finditer(text or ""):
+        month = MONTH_NUMBERS[match.group(1).lower()]
+        year = int(match.group(2))
+        if 2005 <= year <= 2013:
+            return f"{year:04d}-{month:02d}"
     year_match = C6_YEAR_RE.search(text or "")
     return f"{int(year_match.group(1)):04d}-01" if year_match else None
 
@@ -109,6 +141,9 @@ def extract_tuv_until(text: str) -> str | None:
         r"(?:HU|TÜV|TUV)\s*(?:bis)?\s*(0?[1-9]|1[0-2])[./-](20\d{2})", text, re.I
     ):
         return f"{int(match.group(2)):04d}-{int(match.group(1)):02d}"
+    for match in TEXT_TUV_MONTH_YEAR_RE.finditer(text):
+        month = MONTH_NUMBERS[match.group(1).lower()]
+        return f"{int(match.group(2)):04d}-{month:02d}"
     return None
 
 
