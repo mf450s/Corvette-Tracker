@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import html
+import json
+import logging
 import re
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from ..http import fetch_html
 from ..models import Listing
@@ -14,10 +17,42 @@ from ..scoring import apply_score
 SOURCE = "Kleinanzeigen"
 DEFAULT_URL = "https://www.kleinanzeigen.de/s-autos/sortierung:neuste/corvette-c6/k0c216"
 DETAIL_IMAGE_RULE = "$_59.AUTO"
+log = logging.getLogger(__name__)
 
 
 def _text(node) -> str:
     return " ".join(str(node.get_text(" ", strip=True)).split()) if node else ""
+
+
+def _usable_title(value: str) -> str:
+    title = " ".join((value or "").split())
+    if not title or title.isdigit() or len(title) < 4:
+        return ""
+    return title
+
+
+def _json_ld_objects(root: BeautifulSoup | Tag) -> list[dict[str, Any]]:
+    objects: list[dict[str, Any]] = []
+    for script in root.select('script[type="application/ld+json"]'):
+        raw = script.string or script.get_text(" ", strip=False)
+        if not raw:
+            continue
+        try:
+            decoded = json.loads(html.unescape(raw))
+        except (TypeError, json.JSONDecodeError):
+            continue
+        values = decoded if isinstance(decoded, list) else [decoded]
+        objects.extend(value for value in values if isinstance(value, dict))
+    return objects
+
+
+def _json_ld_title(root: BeautifulSoup | Tag) -> str:
+    for item in _json_ld_objects(root):
+        for key in ("title", "name"):
+            title = _usable_title(str(item.get(key) or ""))
+            if title:
+                return title
+    return ""
 
 
 def normalize_kleinanzeigen_image_url(url: str) -> str:
@@ -78,6 +113,41 @@ def parse_kleinanzeigen_detail_text(html_text: str) -> str:
     return _text(soup)
 
 
+def _detail_title(soup: BeautifulSoup) -> str:
+    for selector in (
+        "#viewad-title",
+        "h1[itemprop='name']",
+        "h1[id*='title']",
+        "h1",
+    ):
+        title_node = soup.select_one(selector)
+        title = _usable_title(_text(title_node))
+        if title:
+            return title
+    return _json_ld_title(soup)
+
+
+def _detail_description_text(soup: BeautifulSoup) -> str:
+    for selector in (
+        "#viewad-description-text",
+        "[itemprop='description']",
+    ):
+        description_node = soup.select_one(selector)
+        description = _text(description_node)
+        if description:
+            return description
+    for item in _json_ld_objects(soup):
+        description = " ".join(str(item.get("description") or "").split())
+        if description:
+            return description
+    return ""
+
+
+def _detail_configuration_text(soup: BeautifulSoup) -> str:
+    values = [_text(node) for node in soup.select("#viewad-configuration .checktag")]
+    return " ".join(value for value in values if value)
+
+
 def _detail_price_text(soup: BeautifulSoup) -> str:
     price_node = soup.select_one("#viewad-price, [id*=viewad-price]")
     if price_node:
@@ -90,7 +160,15 @@ def _detail_price_text(soup: BeautifulSoup) -> str:
 
 
 def _split_detail_label_value(node) -> tuple[str, str] | None:
-    parts = [_text(child) for child in node.find_all(recursive=False)]
+    direct_text = " ".join(
+        str(value).strip() for value in node.find_all(string=True, recursive=False) if value.strip()
+    )
+    child_values = [_text(child) for child in node.find_all(recursive=False)]
+    child_values = [value for value in child_values if value]
+    if direct_text and child_values:
+        return direct_text, " ".join(child_values)
+
+    parts = child_values
     parts = [part for part in parts if part]
     if len(parts) >= 2:
         return parts[0], " ".join(parts[1:])
@@ -149,15 +227,21 @@ def _merge_detail_facts(listing: Listing, detail_html: str) -> Listing:
     soup = BeautifulSoup(detail_html, "html.parser")
     price_text = _detail_price_text(soup)
     facts_text = _detail_facts_text(soup)
-    if not price_text and not facts_text:
+    detail_title = _detail_title(soup)
+    description_text = _detail_description_text(soup)
+    configuration_text = _detail_configuration_text(soup)
+    detail_text = " ".join(
+        value for value in (facts_text, configuration_text, description_text) if value
+    )
+    if not price_text and not detail_text and not detail_title:
         return listing
 
     detail_listing = normalize_listing(
         source=listing.source,
         source_listing_id=listing.source_listing_id,
         url=listing.url,
-        title=listing.title,
-        description=facts_text,
+        title=detail_title or listing.title,
+        description=detail_text,
         price_text=price_text,
         location_raw=listing.location_raw,
         image_urls=listing.image_urls,
@@ -166,6 +250,7 @@ def _merge_detail_facts(listing: Listing, detail_html: str) -> Listing:
         return listing
 
     for field in (
+        "title",
         "price_eur",
         "price_label",
         "mileage_km",
@@ -187,12 +272,29 @@ def _merge_detail_facts(listing: Listing, detail_html: str) -> Listing:
         "origin_country",
         "origin_confidence",
         "vin",
+        "model_year",
+        "power_kw",
+        "displacement_cc",
+        "drivetrain",
+        "condition",
+        "owners_count",
+        "service_history",
+        "warranty",
+        "magnetic_ride",
+        "active_exhaust",
+        "head_up_display",
+        "navigation",
+        "bose_audio",
+        "leather_interior",
+        "heated_seats",
     ):
         value = getattr(detail_listing, field)
-        if value is not None:
+        if value is not None and (field != "title" or _usable_title(str(value))):
             setattr(listing, field, value)
 
     listing.model = detail_listing.model or listing.model
+    if description_text:
+        listing.description_text = description_text
     listing.risk_flags = list(dict.fromkeys([*listing.risk_flags, *detail_listing.risk_flags]))
     listing.inference_notes = list(
         dict.fromkeys([*listing.inference_notes, *detail_listing.inference_notes])
@@ -211,7 +313,7 @@ def _listing_id_from_url(url: str, fallback: str) -> str:
 def _fallback_listing_segments(html_text: str, base_url: str) -> list[Listing]:
     matches = list(
         re.finditer(
-            r'<h2[^>]*>\s*<a[^>]+href=["\']([^"\']*/s-anzeige/[^"\']+)["\'][^>]*>(.*?)</a>\s*</h2>',
+            r'<h[123][^>]*>\s*<a[^>]+href=["\']([^"\']*/s-anzeige/[^"\']+)["\'][^>]*>(.*?)</a>\s*</h[123]>',
             html_text,
             flags=re.I | re.S,
         )
@@ -256,16 +358,32 @@ def parse_kleinanzeigen_search(html_text: str, base_url: str = DEFAULT_URL) -> l
         text = _text(article)
         if "corvette" not in text.lower() and "c6" not in text.lower():
             continue
-        title_node = article.select_one("h2")
-        link = article.select_one('h2 a[href*="/s-anzeige/"]') or article.select_one(
-            'a[href*="/s-anzeige/"]'
+        title_node = None
+        for selector in ("h1", "h2", "h3", '[class*="title"]', '[data-testid*="title"]'):
+            title_node = article.select_one(selector)
+            if _usable_title(_text(title_node)):
+                break
+        title_link = article.select_one(
+            'h1 a[href*="/s-anzeige/"], h2 a[href*="/s-anzeige/"], h3 a[href*="/s-anzeige/"]'
         )
+        link = title_link or article.select_one('a[href*="/s-anzeige/"]')
         href = article.get("data-href") or (link.get("href") if link else None)
         if not href:
             continue
-        title = _text(title_node) or _text(link) or text[:120]
         url = urljoin(base_url, str(href))
         source_id = article.get("data-adid") or article.get("id") or f"ka-{index}"
+        title_candidates = [
+            _text(title_node),
+            _text(title_link),
+            _json_ld_title(article),
+            _text(link),
+        ]
+        title = next(
+            (candidate for candidate in map(_usable_title, title_candidates) if candidate), ""
+        )
+        if not title:
+            title = f"Kleinanzeigen-Angebot {source_id} ohne Titel"
+            log.warning("Kleinanzeigen search result has no usable title: %s", url)
         price_node = article.select_one('[class*="price"]')
         desc_node = article.select_one('[class*="description"]')
         location_node = article.select_one('[class*="top--left"], [class*="location"]')
@@ -281,6 +399,8 @@ def parse_kleinanzeigen_search(html_text: str, base_url: str = DEFAULT_URL) -> l
             image_urls=_images(article, base_url),
         )
         if listing:
+            if title.startswith("Kleinanzeigen-Angebot "):
+                listing.inference_notes.append("Kleinanzeigen: Titelquelle nicht verfügbar")
             listings.append(listing)
     return _dedupe_listings(listings + _fallback_listing_segments(html_text, base_url))
 
@@ -341,7 +461,8 @@ def fetch_kleinanzeigen(url: str = DEFAULT_URL) -> list[Listing]:
             detail_html = fetch_html(listing.url)
             detail_images = parse_kleinanzeigen_detail_images(detail_html, listing.url)
             detail_text = parse_kleinanzeigen_detail_text(detail_html)
-        except Exception:
+        except Exception as exc:
+            log.warning("Kleinanzeigen detail fetch failed for %s: %s", listing.url, exc)
             detail_html = ""
             detail_images = []
             detail_text = ""

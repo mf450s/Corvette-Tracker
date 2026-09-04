@@ -217,6 +217,11 @@ def extract_power_kw(text: str) -> int | None:
 
 def extract_displacement_cc(text: str) -> int | None:
     lower = (text or "").lower()
+    cc_match = re.search(r"\bhubraum\s*:?\s*([\d.\s]{3,7})\s*cm(?:³|3)\b", lower)
+    if cc_match:
+        displacement = _to_int(cc_match.group(1))
+        if displacement is not None and 5_000 <= displacement <= 8_000:
+            return displacement
     if re.search(r"6[,.]2\s*(?:sc|supercharged|kompressor)", lower):
         return 6162
     pattern = re.compile(
@@ -268,7 +273,10 @@ def extract_condition(text: str) -> str | None:
 
 def extract_owners_count(text: str) -> int | None:
     lower = (text or "").lower()
-    match = re.search(r"(?:anzahl\s+vorbesitzer|vorbesitzer)\s*:?\s*(\d{1,2})", lower)
+    match = re.search(
+        r"(?:anzahl\s+(?:der\s+)?fahrzeughalter|anzahl\s+vorbesitzer|vorbesitzer)\s*:?\s*(\d{1,2})",
+        lower,
+    )
     if match:
         n = int(match.group(1))
         return n if 1 <= n <= 20 else None
