@@ -31,6 +31,11 @@ def _usable_title(value: str) -> str:
     return title
 
 
+def _fallback_title(source_listing_id: str | None, url: str) -> str:
+    identifier = source_listing_id or _listing_id_from_url(url, "unbekannt")
+    return f"Kleinanzeigen-Angebot {identifier} ohne Titel"
+
+
 def _json_ld_objects(root: BeautifulSoup | Tag) -> list[dict[str, Any]]:
     objects: list[dict[str, Any]] = []
     for script in root.select('script[type="application/ld+json"]'):
@@ -118,11 +123,14 @@ def _detail_title(soup: BeautifulSoup) -> str:
         "#viewad-title",
         "h1[itemprop='name']",
         "h1[id*='title']",
-        "h1",
     ):
         title_node = soup.select_one(selector)
         title = _usable_title(_text(title_node))
         if title:
+            return title
+    for title_node in soup.select("h1"):
+        title = _usable_title(_text(title_node))
+        if title and ("corvette" in title.lower() or re.search(r"\bc\s*6\b", title, re.I)):
             return title
     return _json_ld_title(soup)
 
@@ -382,7 +390,7 @@ def parse_kleinanzeigen_search(html_text: str, base_url: str = DEFAULT_URL) -> l
             (candidate for candidate in map(_usable_title, title_candidates) if candidate), ""
         )
         if not title:
-            title = f"Kleinanzeigen-Angebot {source_id} ohne Titel"
+            title = _fallback_title(str(source_id), url)
             log.warning("Kleinanzeigen search result has no usable title: %s", url)
         price_node = article.select_one('[class*="price"]')
         desc_node = article.select_one('[class*="description"]')

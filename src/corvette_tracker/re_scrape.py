@@ -50,8 +50,13 @@ def _re_scrape_kleinanzeigen(
     - merges everything into the existing listing and upserts to the store
     """
     # Lazy imports to avoid circular deps at module load
+    from bs4 import BeautifulSoup
+
     from .sources.kleinanzeigen import (
+        _detail_title,
+        _fallback_title,
         _merge_detail_facts,
+        _usable_title,
         parse_kleinanzeigen_detail_images,
         parse_kleinanzeigen_detail_text,
     )
@@ -66,8 +71,6 @@ def _re_scrape_kleinanzeigen(
 
     if listing is None:
         # Still not found — create a fresh listing from the raw HTML
-        from bs4 import BeautifulSoup
-
         soup = BeautifulSoup(html, "html.parser")
         title_tag = soup.select_one("h1")
         title = " ".join(title_tag.get_text(" ", strip=True).split()) if title_tag else ""
@@ -103,6 +106,13 @@ def _re_scrape_kleinanzeigen(
 
     # Merge detail facts into the listing (price, mileage, specs, etc.)
     updated = _merge_detail_facts(listing, html)
+    detail_title = _detail_title(BeautifulSoup(html, "html.parser"))
+    if detail_title:
+        updated.title = detail_title
+    elif not _usable_title(updated.title):
+        updated.title = _fallback_title(updated.source_listing_id, url)
+        updated.inference_notes.append("Kleinanzeigen: Titelquelle nicht verfügbar")
+        log.warning("Kleinanzeigen detail page has no usable title: %s", url)
     if detail_images:
         updated.image_urls = detail_images
     if not updated.transmission:
