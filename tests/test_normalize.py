@@ -21,6 +21,7 @@ from corvette_tracker.normalize import (
     extract_risk_flags,
     extract_service_history,
     extract_trim,
+    extract_tuv_until,
     normalize_listing,
 )
 
@@ -125,6 +126,13 @@ def test_extract_trim_engine_power_body_style_and_registration():
     assert extract_power_hp(text) == 512
     assert extract_body_style(text) == "Coupé"
     assert extract_first_registration(text) == "2008-05"
+
+
+def test_extract_textual_registration_and_tuv_months():
+    assert extract_first_registration("Erstzulassung September 2005") == "2005-09"
+    assert extract_first_registration("Erstzulassung Maerz 2009") == "2009-03"
+    assert extract_tuv_until("HU bis März 2027") == "2027-03"
+    assert extract_tuv_until("TÜV September 2027") == "2027-09"
 
 
 def test_extract_trim_handles_zo6_letter_o():

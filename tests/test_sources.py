@@ -393,6 +393,54 @@ def test_parse_kleinanzeigen_search_marks_missing_title_without_importing_badge_
     assert "no usable title" in caplog.text
 
 
+def test_parse_kleinanzeigen_search_skips_search_requests_from_json_ld_title():
+    html = """
+    <html><body>
+      <article data-adid="ka-search-request" data-href="/s-anzeige/suche-corvette-c6/123-216-1">
+        <a href="/s-anzeige/suche-corvette-c6/123-216-1"><span>3</span></a>
+        <script type="application/ld+json">
+          {"title":"SUCHE CORVETTE C6 CABRIO","description":"Bitte Angebote senden"}
+        </script>
+        <p>Gesuch Corvette C6, bis 20.000 €</p>
+      </article>
+    </body></html>
+    """
+
+    assert parse_kleinanzeigen_search(html) == []
+
+
+def test_fetch_kleinanzeigen_uses_metadata_title_and_data_attribute_facts(monkeypatch):
+    search_html = """
+    <html><body>
+      <article class="aditem" data-adid="ka-meta-detail"
+          data-href="/s-anzeige/corvette-c6-meta/123-216-1">
+        <a href="/s-anzeige/corvette-c6-meta/123-216-1"><span>9</span></a>
+        <p>Corvette C6 44.900 €</p>
+      </article>
+    </body></html>
+    """
+    detail_html = """
+    <html><head><meta property="og:title" content="Chevrolet Corvette C6 LS3" /></head><body>
+      <meta itemprop="price" content="44900" />
+      <div data-label="Kilometerstand" data-value="62.000 km"></div>
+      <div data-detail-label="Leistung" data-detail-value="437 PS"></div>
+      <p id="viewad-description-text">Scheckheft gepflegt</p>
+    </body></html>
+    """
+
+    def fake_fetch_html(url):
+        return detail_html if "/s-anzeige/" in url else search_html
+
+    monkeypatch.setattr("corvette_tracker.sources.kleinanzeigen.fetch_html", fake_fetch_html)
+
+    listings = fetch_kleinanzeigen("https://www.kleinanzeigen.de/s-autos/corvette-c6/k0c216")
+
+    assert len(listings) == 1
+    assert listings[0].title == "Chevrolet Corvette C6 LS3"
+    assert listings[0].mileage_km == 62000
+    assert listings[0].power_hp == 437
+
+
 def test_fetch_kleinanzeigen_merges_detail_title_description_and_fields(monkeypatch):
     search_html = """
     <html><body>
