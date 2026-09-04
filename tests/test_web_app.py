@@ -96,6 +96,16 @@ def test_web_api_lists_and_patches_manual_fields(tmp_path: Path):
         assert status == 200
         assert payload["listings"][0]["id"] == "autoscout24_123"
 
+        store.hide_listing("autoscout24_123")
+        status, payload = request_json(f"{base_url}/api/listings")
+        assert status == 200
+        assert payload["listings"] == []
+        assert payload["total_all"] == 0
+        status, payload = request_json(f"{base_url}/api/listings?show_hidden=true")
+        assert status == 200
+        assert payload["listings"][0]["id"] == "autoscout24_123"
+        store.unhide_listing("autoscout24_123")
+
         status, updated = request_json(
             f"{base_url}/api/listings/autoscout24_123",
             method="PATCH",

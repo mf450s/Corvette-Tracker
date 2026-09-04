@@ -235,21 +235,27 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/listings":
             parsed = urlparse(self.path)
             filters: FilterParams = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+            show_hidden = filters.pop("show_hidden", "").lower() in {"1", "true", "yes"}
             scoring = self.tracker_app.scoring_config()
             non_score_filters = {key: value for key, value in filters.items() if key != "score_min"}
             filtered = apply_scores(
                 self.tracker_app.store.list_filtered(non_score_filters), scoring
             )
+            if not show_hidden:
+                filtered = [listing for listing in filtered if not listing.hidden]
             if "score_min" in filters:
                 filtered = filter_listings(filtered, {"score_min": filters["score_min"]})
             created_map = self.tracker_app.store.created_at_map()
+            all_listings = self.tracker_app.store.list_active()
+            if not show_hidden:
+                all_listings = [listing for listing in all_listings if not listing.hidden]
             self._send_json(
                 {
                     "listings": [
                         {"created_at": created_map.get(l.id), **l.to_dict()} for l in filtered
                     ],
                     "total": len(filtered),
-                    "total_all": len(self.tracker_app.store.list_active()),
+                    "total_all": len(all_listings),
                     "last_run": self.tracker_app.last_run_status(),
                     "last_crawl_at": self.tracker_app.last_crawl_at(),
                 }
