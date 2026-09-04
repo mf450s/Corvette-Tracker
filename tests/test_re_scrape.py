@@ -117,6 +117,44 @@ def test_kleinanzeigen_with_existing_listing(mock_fetch_html, store: TrackerStor
 
 
 @patch("corvette_tracker.re_scrape.fetch_html")
+def test_kleinanzeigen_re_scrape_replaces_numeric_title_from_detail(
+    mock_fetch_html, store: TrackerStore
+) -> None:
+    listing = _make_listing(title="24")
+    store.upsert_listings([listing])
+    mock_fetch_html.return_value = (
+        "<html><body>"
+        '<h1 id="viewad-title">Corvette C6 Grand Sport LS3</h1>'
+        '<p id="viewad-price">44.900 €</p>'
+        "</body></html>"
+    )
+
+    result = re_scrape_offer(store, offer_id=listing.id)
+
+    assert result["success"] is True
+    updated = store.get_listing(listing.id)
+    assert updated is not None
+    assert updated.title == "Corvette C6 Grand Sport LS3"
+
+
+@patch("corvette_tracker.re_scrape.fetch_html")
+def test_kleinanzeigen_re_scrape_marks_missing_title_instead_of_preserving_badge(
+    mock_fetch_html, store: TrackerStore
+) -> None:
+    listing = _make_listing(title="3")
+    store.upsert_listings([listing])
+    mock_fetch_html.return_value = "<html><body><h1>Autos in Wertheim</h1></body></html>"
+
+    result = re_scrape_offer(store, offer_id=listing.id)
+
+    assert result["success"] is True
+    updated = store.get_listing(listing.id)
+    assert updated is not None
+    assert updated.title == "Kleinanzeigen-Angebot 12345 ohne Titel"
+    assert any("Titelquelle nicht verfügbar" in note for note in updated.inference_notes)
+
+
+@patch("corvette_tracker.re_scrape.fetch_html")
 def test_kleinanzeigen_with_url_only(mock_fetch_html, store: TrackerStore) -> None:
     """Re-scrape via URL — listing not yet in the DB, built from scratch."""
     url = "https://www.kleinanzeigen.de/s-anzeige/corvette-c6-54321-216-1406"
