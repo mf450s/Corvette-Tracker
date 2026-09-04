@@ -331,6 +331,117 @@ def test_parse_kleinanzeigen_search_extracts_links_when_article_tree_is_unusable
     assert listings[1].transmission == "automatic"
 
 
+def test_parse_kleinanzeigen_search_ignores_image_badge_and_uses_modern_h3_title():
+    html = """
+    <html><body>
+      <article class="flex justify-between" data-adid="3503006324"
+          data-href="/s-anzeige/corvette-c6-6-0-v8-coup-autom-/3503006324-216-8561">
+        <a href="/s-anzeige/corvette-c6-6-0-v8-coup-autom-/3503006324-216-8561">
+          <div><img src="https://img.example/c6.jpg"><div>9</div></div>
+        </a>
+        <div><h3 class="text-title3"><a name="3503006324"
+          href="/s-anzeige/corvette-c6-6-0-v8-coup-autom-/3503006324-216-8561">
+          Corvette C6 6.0 V8 Coupé Autom. -</a></h3>
+          <p>Chevrolet Corvette C6 | 2005 | Automatik</p>
+          <p>22.999 € 140.000 km</p>
+        </div>
+      </article>
+    </body></html>
+    """
+
+    listings = parse_kleinanzeigen_search(html)
+
+    assert len(listings) == 1
+    assert listings[0].title == "Corvette C6 6.0 V8 Coupé Autom. -"
+    assert not listings[0].title.isdigit()
+
+
+def test_parse_kleinanzeigen_search_uses_json_ld_title_when_heading_is_missing():
+    html = """
+    <html><body>
+      <article data-adid="ka-json-title" data-href="/s-anzeige/corvette-c6/123-216-1">
+        <a href="/s-anzeige/corvette-c6/123-216-1"><span>3</span></a>
+        <script type="application/ld+json">
+          {"title":"Chevrolet Corvette C6 LS3 Schalter","description":"58.000 km"}
+        </script>
+        <p>Corvette C6 LS3 58.000 km 39.900 €</p>
+      </article>
+    </body></html>
+    """
+
+    listings = parse_kleinanzeigen_search(html)
+
+    assert len(listings) == 1
+    assert listings[0].title == "Chevrolet Corvette C6 LS3 Schalter"
+
+
+def test_parse_kleinanzeigen_search_marks_missing_title_without_importing_badge_number(caplog):
+    html = """
+    <html><body>
+      <article data-adid="ka-missing-title" data-href="/s-anzeige/corvette-c6/123-216-1">
+        <a href="/s-anzeige/corvette-c6/123-216-1"><span>3</span></a>
+        <p>Corvette C6 58.000 km 39.900 €</p>
+      </article>
+    </body></html>
+    """
+
+    listings = parse_kleinanzeigen_search(html)
+
+    assert len(listings) == 1
+    assert listings[0].title == "Kleinanzeigen-Angebot ka-missing-title ohne Titel"
+    assert any("Titelquelle nicht verfügbar" in note for note in listings[0].inference_notes)
+    assert "no usable title" in caplog.text
+
+
+def test_fetch_kleinanzeigen_merges_detail_title_description_and_fields(monkeypatch):
+    search_html = """
+    <html><body>
+      <article class="aditem" data-adid="ka-detail-title"
+          data-href="/s-anzeige/corvette-c6/123-216-1">
+        <a href="/s-anzeige/corvette-c6/123-216-1">10</a>
+        <p>Corvette C6 46.000 km 44.900 €</p>
+      </article>
+    </body></html>
+    """
+    detail_html = """
+    <html><body>
+      <h1 id="viewad-title">Corvette C6 Grand Sport LS3</h1>
+      <h2 id="viewad-price">44.900 €</h2>
+      <div id="viewad-details"><ul>
+        <li class="addetailslist--detail">Marke<span>Corvette</span></li>
+        <li class="addetailslist--detail">Modell<span>C6</span></li>
+        <li class="addetailslist--detail">Kilometerstand<span>46.000 km</span></li>
+        <li class="addetailslist--detail">Erstzulassung<span>Mai 2009</span></li>
+        <li class="addetailslist--detail">Leistung<span>437 PS</span></li>
+        <li class="addetailslist--detail">Getriebe<span>Manuell</span></li>
+        <li class="addetailslist--detail">Fahrzeugtyp<span>Coupé</span></li>
+        <li class="addetailslist--detail">Anzahl Vorbesitzer<span>2</span></li>
+      </ul></div>
+      <div id="viewad-configuration"><ul class="checktaglist">
+        <li class="checktag">Sitzheizung</li><li class="checktag">Bose</li>
+      </ul></div>
+      <p id="viewad-description-text">Baujahr 2009, Scheckheft gepflegt, Rechnungen vorhanden.</p>
+    </body></html>
+    """
+
+    def fake_fetch_html(url):
+        return detail_html if "/s-anzeige/" in url else search_html
+
+    monkeypatch.setattr("corvette_tracker.sources.kleinanzeigen.fetch_html", fake_fetch_html)
+
+    listings = fetch_kleinanzeigen("https://www.kleinanzeigen.de/s-autos/corvette-c6/k0c216")
+
+    assert len(listings) == 1
+    listing = listings[0]
+    assert listing.title == "Corvette C6 Grand Sport LS3"
+    assert listing.description_text == "Baujahr 2009, Scheckheft gepflegt, Rechnungen vorhanden."
+    assert listing.model_year == 2009
+    assert listing.owners_count == 2
+    assert listing.service_history is True
+    assert listing.heated_seats is True
+    assert listing.bose_audio is True
+
+
 def test_fetch_kleinanzeigen_fills_missing_transmission_from_detail_page(monkeypatch):
     search_html = KLEINANZEIGEN_HTML.replace(" Getriebe Manuell", "")
     detail_html = """

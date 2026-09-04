@@ -405,11 +405,13 @@ def test_extract_displacement_cc():
     assert extract_displacement_cc("7.0L") == 7008
     assert extract_displacement_cc("6.2 L") == 6162
     assert extract_displacement_cc("6.0L") == 5967
+    assert extract_displacement_cc("Hubraum: 5967 cm³") == 5967
     assert extract_displacement_cc("V8") is None
 
 
 def test_extract_owners_count():
     assert extract_owners_count("Anzahl Vorbesitzer: 2") == 2
+    assert extract_owners_count("Anzahl der Fahrzeughalter: 3") == 3
     assert extract_owners_count("3. Hand") == 3
     assert extract_owners_count("1 Hand") == 1
     assert extract_owners_count("keine Angabe") is None
