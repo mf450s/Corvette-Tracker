@@ -70,89 +70,84 @@ jobs:
             mv /tmp/.buildx-cache-new /tmp/.buildx-cache
           fi
 
+      # Forgejo prefetches every referenced external action before evaluating step conditions.
+      # Run the scanners as pinned Docker images so missing GitHub Marketplace mirrors do not fail Forgejo.
       - name: trivy image scan
         if: ${{ github.repository_owner == 'mf450s' }}
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-        with:
-          image-ref: ${{ env.IMAGE }}
-          format: sarif
-          output: trivy-image.sarif
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          vuln-type: os,library
-          exit-code: '0'
+        run: |
+          if [ "${GITHUB_API_URL:-}" != "https://api.github.com" ]; then
+            printf '%s\n' 'Forgejo skip: Trivy image scan is replaced by the GitHub-only security path.'
+            exit 0
+          fi
+          docker run --rm --volume /var/run/docker.sock:/var/run/docker.sock --volume "$PWD:/src" aquasec/trivy:0.71.2 image --format sarif --output /src/trivy-image.sarif --severity HIGH,CRITICAL --ignore-unfixed --vuln-type os,library "${IMAGE}"
 
       - name: trivy config scan
         if: ${{ github.repository_owner == 'mf450s' }}
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-        with:
-          scan-type: config
-          scan-ref: .
-          format: sarif
-          output: trivy-config.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '0'
+        run: |
+          if [ "${GITHUB_API_URL:-}" != "https://api.github.com" ]; then
+            printf '%s\n' 'Forgejo skip: Trivy config scan is replaced by the GitHub-only security path.'
+            exit 0
+          fi
+          docker run --rm --volume "$PWD:/src" aquasec/trivy:0.71.2 config --format sarif --output /src/trivy-config.sarif --severity HIGH,CRITICAL /src
 
       - name: trivy secret scan
         if: ${{ github.repository_owner == 'mf450s' }}
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: secret
-          format: sarif
-          output: trivy-secret.sarif
-          exit-code: '0'
+        run: |
+          if [ "${GITHUB_API_URL:-}" != "https://api.github.com" ]; then
+            printf '%s\n' 'Forgejo skip: Trivy secret scan is replaced by the GitHub-only security path.'
+            exit 0
+          fi
+          docker run --rm --volume "$PWD:/src" aquasec/trivy:0.71.2 fs --scanners secret --format sarif --output /src/trivy-secret.sarif /src
 
       - name: grype image scan
         if: ${{ github.repository_owner == 'mf450s' }}
-        uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
-        with:
-          image: ${{ env.IMAGE }}
-          output-format: sarif
-          output-file: grype.sarif
-          only-fixed: true
-          fail-build: false
-          severity-cutoff: high
-          cache-db: true
+        run: |
+          if [ "${GITHUB_API_URL:-}" != "https://api.github.com" ]; then
+            printf '%s\n' 'Forgejo skip: Grype image scan is replaced by the GitHub-only security path.'
+            exit 0
+          fi
+          docker run --rm --volume /var/run/docker.sock:/var/run/docker.sock --volume "$PWD:/src" anchore/grype:v0.115.0 "${IMAGE}" --only-fixed --output sarif=/src/grype.sarif
 
-      - name: upload trivy image results
-        if: always() && github.repository_owner == 'mf450s' && hashFiles('trivy-image.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
+      - name: upload SARIF results to GitHub code scanning
+        if: ${{ always() && github.repository_owner == 'mf450s' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         continue-on-error: true
-        with:
-          sarif_file: trivy-image.sarif
-          category: trivy-image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${GITHUB_API_URL:-}" != "https://api.github.com" ]; then
+            printf '%s\n' 'Forgejo skip: SARIF upload is only available through the GitHub Code Scanning API.'
+            exit 0
+          fi
+          python3 - <<'PY'
+          import base64
+          import gzip
+          import json
+          import os
+          import urllib.request
+          from pathlib import Path
 
-      - name: upload trivy config results
-        if: always() && github.repository_owner == 'mf450s' && hashFiles('trivy-config.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
-        continue-on-error: true
-        with:
-          sarif_file: trivy-config.sarif
-          category: trivy-config
-
-      - name: upload trivy secret results
-        if: always() && github.repository_owner == 'mf450s' && hashFiles('trivy-secret.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
-        continue-on-error: true
-        with:
-          sarif_file: trivy-secret.sarif
-          category: trivy-secret
-
-      - name: upload grype results
-        if: always() && github.repository_owner == 'mf450s' && hashFiles('grype.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
-        continue-on-error: true
-        with:
-          sarif_file: grype.sarif
-          category: grype-image
+          api = os.environ["GITHUB_API_URL"] + "/repos/" + os.environ["GITHUB_REPOSITORY"] + "/code-scanning/sarifs"
+          for filename, tool_name in (("trivy-image.sarif", "trivy-image"), ("trivy-config.sarif", "trivy-config"), ("trivy-secret.sarif", "trivy-secret"), ("grype.sarif", "grype-image")):
+              report = Path(filename)
+              if not report.is_file():
+                  print("SARIF report missing: " + filename)
+                  continue
+              payload = {
+                  "commit_sha": os.environ["GITHUB_SHA"],
+                  "ref": os.environ["GITHUB_REF"],
+                  "sarif": base64.b64encode(gzip.compress(report.read_bytes())).decode("ascii"),
+                  "tool_name": tool_name,
+              }
+              request = urllib.request.Request(api, data=json.dumps(payload).encode("utf-8"), method="POST", headers={"Accept": "application/vnd.github+json", "Authorization": "Bearer " + os.environ["GH_TOKEN"], "Content-Type": "application/json", "User-Agent": "corvette-tracker-ci/1"})
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  print("SARIF upload " + tool_name + ": HTTP " + str(response.status))
+          PY
 
       - name: explain Forgejo security scan skips
         if: ${{ always() && github.repository_owner != 'mf450s' }}
         run: |
-          printf '%s\n' 'Forgejo skip: trivy-action and anchore/scan-action require external action repositories not mirrored by this Forgejo instance.'
-          printf '%s\n' 'Forgejo skip: GitHub Code Scanning SARIF upload is unavailable; GitHub retains the SARIF upload path.'
+          printf '%s\n' 'Forgejo skip: Trivy and Grype run only on the GitHub canonical because this Forgejo instance does not mirror their external action repositories.'
+          printf '%s\n' 'Forgejo skip: GitHub Code Scanning SARIF upload is replaced by the GitHub API path and is unavailable on Forgejo.'
 
       - name: smoke test image
         shell: bash
