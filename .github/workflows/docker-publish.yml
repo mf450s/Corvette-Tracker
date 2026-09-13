@@ -158,19 +158,13 @@ jobs:
           cleanup() { docker rm --force "$container" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
           for _ in {1..30}; do
-            if curl --fail --silent --show-error http://127.0.0.1:18096/api/status >/dev/null; then
-              break
-            fi
-            sleep 2
-          done
-          curl --fail --silent --show-error http://127.0.0.1:18096/api/status >/dev/null
-          for _ in {1..30}; do
             if [ "$(docker inspect --format '{{.State.Health.Status}}' "$container")" = healthy ]; then
               break
             fi
             sleep 2
           done
           test "$(docker inspect --format '{{.State.Health.Status}}' "$container")" = healthy
+          docker exec "$container" python -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8096/api/status", timeout=10).read()'
 
   publish:
     if: ${{ github.event_name == 'push' && github.repository_owner == 'mf450s' }}
