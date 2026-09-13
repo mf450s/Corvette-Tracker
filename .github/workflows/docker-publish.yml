@@ -71,7 +71,7 @@ jobs:
           fi
 
       - name: trivy image scan
-        if: github.repository_owner == 'mf450s'
+        if: ${{ github.repository_owner == 'mf450s' }}
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           image-ref: ${{ env.IMAGE }}
@@ -83,7 +83,7 @@ jobs:
           exit-code: '0'
 
       - name: trivy config scan
-        if: github.repository_owner == 'mf450s'
+        if: ${{ github.repository_owner == 'mf450s' }}
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: config
@@ -94,7 +94,7 @@ jobs:
           exit-code: '0'
 
       - name: trivy secret scan
-        if: github.repository_owner == 'mf450s'
+        if: ${{ github.repository_owner == 'mf450s' }}
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: fs
@@ -105,7 +105,7 @@ jobs:
           exit-code: '0'
 
       - name: grype image scan
-        if: github.repository_owner == 'mf450s'
+        if: ${{ github.repository_owner == 'mf450s' }}
         uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
         with:
           image: ${{ env.IMAGE }}
@@ -149,7 +149,7 @@ jobs:
           category: grype-image
 
       - name: explain Forgejo security scan skips
-        if: always() && github.repository_owner != 'mf450s'
+        if: ${{ always() && github.repository_owner != 'mf450s' }}
         run: |
           printf '%s\n' 'Forgejo skip: trivy-action and anchore/scan-action require external action repositories not mirrored by this Forgejo instance.'
           printf '%s\n' 'Forgejo skip: GitHub Code Scanning SARIF upload is unavailable; GitHub retains the SARIF upload path.'
@@ -178,7 +178,7 @@ jobs:
           test "$(docker inspect --format '{{.State.Health.Status}}' "$container")" = healthy
 
   publish:
-    if: github.event_name == 'push' && github.repository_owner == 'mf450s'
+    if: ${{ github.event_name == 'push' && github.repository_owner == 'mf450s' }}
     needs: [test, build-scan]
     runs-on: ubuntu-24.04
     permissions:
