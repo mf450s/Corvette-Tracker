@@ -71,6 +71,7 @@ jobs:
           fi
 
       - name: trivy image scan
+        if: github.repository_owner == 'mf450s'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           image-ref: ${{ env.IMAGE }}
@@ -82,6 +83,7 @@ jobs:
           exit-code: '0'
 
       - name: trivy config scan
+        if: github.repository_owner == 'mf450s'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: config
@@ -92,6 +94,7 @@ jobs:
           exit-code: '0'
 
       - name: trivy secret scan
+        if: github.repository_owner == 'mf450s'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: fs
@@ -102,6 +105,7 @@ jobs:
           exit-code: '0'
 
       - name: grype image scan
+        if: github.repository_owner == 'mf450s'
         uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
         with:
           image: ${{ env.IMAGE }}
@@ -113,7 +117,7 @@ jobs:
           cache-db: true
 
       - name: upload trivy image results
-        if: always() && github.server_url == 'https://github.com' && hashFiles('trivy-image.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && github.repository_owner == 'mf450s' && hashFiles('trivy-image.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
         continue-on-error: true
         with:
@@ -121,7 +125,7 @@ jobs:
           category: trivy-image
 
       - name: upload trivy config results
-        if: always() && github.server_url == 'https://github.com' && hashFiles('trivy-config.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && github.repository_owner == 'mf450s' && hashFiles('trivy-config.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
         continue-on-error: true
         with:
@@ -129,7 +133,7 @@ jobs:
           category: trivy-config
 
       - name: upload trivy secret results
-        if: always() && github.server_url == 'https://github.com' && hashFiles('trivy-secret.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && github.repository_owner == 'mf450s' && hashFiles('trivy-secret.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
         continue-on-error: true
         with:
@@ -137,23 +141,18 @@ jobs:
           category: trivy-secret
 
       - name: upload grype results
-        if: always() && github.server_url == 'https://github.com' && hashFiles('grype.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && github.repository_owner == 'mf450s' && hashFiles('grype.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.3
         continue-on-error: true
         with:
           sarif_file: grype.sarif
           category: grype-image
 
-      - name: report Forgejo scan files
-        if: always() && github.server_url != 'https://github.com'
+      - name: explain Forgejo security scan skips
+        if: always() && github.repository_owner != 'mf450s'
         run: |
-          for report in trivy-image.sarif trivy-config.sarif trivy-secret.sarif grype.sarif; do
-            if [ -f "$report" ]; then
-              printf 'Forgejo scan report generated: %s (%s bytes)\n' "$report" "$(wc -c < "$report")"
-            else
-              printf 'Forgejo scan report missing: %s\n' "$report"
-            fi
-          done
+          printf '%s\n' 'Forgejo skip: trivy-action and anchore/scan-action require external action repositories not mirrored by this Forgejo instance.'
+          printf '%s\n' 'Forgejo skip: GitHub Code Scanning SARIF upload is unavailable; GitHub retains the SARIF upload path.'
 
       - name: smoke test image
         shell: bash
@@ -179,7 +178,7 @@ jobs:
           test "$(docker inspect --format '{{.State.Health.Status}}' "$container")" = healthy
 
   publish:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.repository_owner == 'mf450s'
     needs: [test, build-scan]
     runs-on: ubuntu-24.04
     permissions:
@@ -212,8 +211,8 @@ jobs:
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.server_url == 'https://github.com' && github.actor || secrets.GHCR_USERNAME }}
-          password: ${{ github.server_url == 'https://github.com' && secrets.GITHUB_TOKEN || secrets.GHCR_TOKEN }}
+          username: ${{ github.repository_owner == 'mf450s' && github.actor || secrets.GHCR_USERNAME }}
+          password: ${{ github.repository_owner == 'mf450s' && secrets.GITHUB_TOKEN || secrets.GHCR_TOKEN }}
 
       - name: extract docker metadata
         id: meta
